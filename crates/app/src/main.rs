@@ -11,7 +11,6 @@ use app::schedule::Scheduler;
 use app::settings::{SettingsError, SettingsForm};
 use app::theme::{self, Palette};
 use app::view;
-use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{self, Align, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Margin, Modifiers, Rect, RichText, Stroke};
 use luuluong_core::validate::format_vn;
 use luuluong_core::{compute, CalcError, Inputs, Outputs, Turbine, VolumeTable};
@@ -533,18 +532,14 @@ impl eframe::App for App {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::History, "Lịch sử", "2"), (Tab::Settings, "Cài đặt", "3")] {
                         let active = self.tab == tab;
-                        let (name_font, name_color) = if active {
-                            (FontId::new(14.0, theme::semibold()), p.primary)
+                        let text = if active {
+                            RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
                         } else {
-                            (FontId::proportional(14.0), p.muted)
+                            RichText::new(name).size(14.0).color(p.muted)
                         };
-                        // Phím tắt hiện ngay cạnh tên tab để người dùng chuột cũng biết.
+                        let button = egui::Button::new(text).frame(false).min_size(egui::vec2(96.0, 38.0));
                         let modifier = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
-                        let mut label = LayoutJob::default();
-                        label.append(name, 0.0, TextFormat { font_id: name_font, color: name_color, ..Default::default() });
-                        label.append(&format!("  {modifier}+{key}"), 0.0, TextFormat { font_id: FontId::proportional(12.0), color: p.muted, ..Default::default() });
-                        let button = egui::Button::new(label).frame(false).min_size(egui::vec2(120.0, 38.0));
-                        let r = ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand);
+                        let r = ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(format!("{modifier} + {key}"));
                         if active {
                             let line = Rect::from_min_max(egui::pos2(r.rect.left(), r.rect.bottom() - 3.0), r.rect.right_bottom());
                             ui.painter().rect_filled(line, CornerRadius::ZERO, p.primary);
@@ -630,14 +625,9 @@ impl App {
                     let ui = &mut cols[0];
                     title(ui, p, "Thông số tính toán");
                     ui.add_space(8.0);
-                    ui.columns(2, |cols| {
-                        for (col, f) in cols.iter_mut().zip([Field::ZStart, Field::ZEnd]) {
-                            enter_pressed |= self.input_row(col, p, f, &errors, &hint);
-                        }
-                    });
-                    ui.columns(3, |cols| {
-                        for (col, f) in cols.iter_mut().zip([Field::Hours, Field::H1, Field::H2]) {
-                            enter_pressed |= self.input_row(col, p, f, &errors, &hint);
+                    egui::Grid::new("inputs").num_columns(2).min_col_width(170.0).spacing([12.0, 10.0]).show(ui, |ui| {
+                        for f in [Field::ZStart, Field::ZEnd, Field::Hours, Field::H1, Field::H2] {
+                            enter_pressed |= self.input_row(ui, p, f, &errors, &hint);
                         }
                     });
                     ui.add_space(4.0);
@@ -648,9 +638,9 @@ impl App {
                         spill = spill.open(Some(true));
                     }
                     spill.show(ui, |ui| {
-                        ui.columns(3, |cols| {
-                            for (col, f) in cols.iter_mut().zip([Field::SpillQ, Field::SpillH, Field::EcoQ]) {
-                                enter_pressed |= self.input_row(col, p, f, &errors, &hint);
+                        egui::Grid::new("spill_inputs").num_columns(2).min_col_width(170.0).spacing([12.0, 10.0]).show(ui, |ui| {
+                            for f in [Field::SpillQ, Field::SpillH, Field::EcoQ] {
+                                enter_pressed |= self.input_row(ui, p, f, &errors, &hint);
                             }
                         });
                     });
@@ -680,8 +670,17 @@ impl App {
         ui.add_space(12.0);
         self.weather_card(ui, p);
 
-        // Kết luận + bảng số liệu ngay dưới thời tiết: đọc được số mà không cần rê chuột vào biểu đồ.
         let data = self.compare_data();
+        ui.add_space(12.0);
+        ui.columns(2, |cols| {
+            let min_h = (stored_height(cols[0].ctx(), "h_compare") - 2.0 * CARD_PAD).max(0.0);
+            self.radar_card(&mut cols[0], p, min_h);
+            if let Some(d) = &data {
+                let h = self.compare_card(&mut cols[1], p, d);
+                store_height(cols[1].ctx(), "h_compare", h);
+            }
+        });
+        // Kết luận + bảng số liệu ở cuối trang.
         if let Some(d) = &data {
             ui.add_space(12.0);
             let gap = 12.0;
@@ -694,15 +693,6 @@ impl App {
                 ui.allocate_ui_with_layout(egui::vec2(total - left, 0.0), Layout::top_down(Align::Min), |ui| self.detail_card(ui, p, d));
             });
         }
-        ui.add_space(12.0);
-        ui.columns(2, |cols| {
-            let min_h = (stored_height(cols[0].ctx(), "h_compare") - 2.0 * CARD_PAD).max(0.0);
-            self.radar_card(&mut cols[0], p, min_h);
-            if let Some(d) = &data {
-                let h = self.compare_card(&mut cols[1], p, d);
-                store_height(cols[1].ctx(), "h_compare", h);
-            }
-        });
 
         if enter_pressed {
             self.try_compute();
@@ -952,7 +942,7 @@ impl App {
                 ui.add_space(6.0);
                 ui.label(
                     RichText::new(format!(
-                        "Mỗi cột là lượng mưa cả ngày của một nguồn (mm), có số trên đầu cột; rê chuột để xem thêm, hoặc xem bảng Số liệu chi tiết phía trên. Vạch đỏ nét đứt: ngưỡng cảnh báo {} mm.",
+                        "Mỗi cột là lượng mưa cả ngày của một nguồn (mm), có số trên đầu cột; rê chuột để xem thêm, hoặc xem bảng Số liệu chi tiết ở cuối trang. Vạch đỏ nét đứt: ngưỡng cảnh báo {} mm.",
                         format_vn(d.threshold, 0)
                     ))
                     .size(12.0)
@@ -1054,43 +1044,49 @@ impl App {
         });
     }
 
+    /// Một hàng của lưới nhập: nhãn | ô nhập + đơn vị, gợi ý/lỗi ngay dưới ô. Gọi trong `egui::Grid`.
     /// Trả về true nếu người dùng nhấn Enter trong ô này.
     fn input_row(&mut self, ui: &mut egui::Ui, p: &Palette, f: Field, errors: &[(Field, CalcError)], hint: &str) -> bool {
         let (label, unit) = field_label(f);
         let error = errors.iter().find(|(ef, _)| *ef == f).map(|(_, e)| e);
         let show_error = error.is_some() && (self.submitted || !self.form.get(f).trim().is_empty());
         let mut enter = false;
-        ui.label(RichText::new(label).size(13.0));
-        ui.horizontal(|ui| {
-            let stroke_color = if show_error { p.error } else { p.border };
-            let r = ui.add(
-                egui::TextEdit::singleline(self.form.get_mut(f))
-                    .id(Self::field_id(f))
-                    .desired_width((ui.available_width() - 64.0).clamp(90.0, 200.0))
-                    .font(FontId::proportional(15.0))
-                    .margin(Margin::symmetric(8, 8)),
-            );
+        // Lùi nhãn xuống để thẳng hàng với chữ trong ô nhập.
+        ui.vertical(|ui| {
+            ui.add_space(8.0);
+            ui.label(RichText::new(label).size(14.0));
+        });
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                let r = ui.add(
+                    egui::TextEdit::singleline(self.form.get_mut(f))
+                        .id(Self::field_id(f))
+                        .desired_width(140.0)
+                        .font(FontId::proportional(15.0))
+                        .margin(Margin::symmetric(8, 8)),
+                );
+                if show_error {
+                    ui.painter().rect_stroke(r.rect, CornerRadius::same(8), Stroke::new(1.5, p.error), egui::StrokeKind::Outside);
+                }
+                ui.label(RichText::new(unit).color(p.muted));
+                if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                    enter = true;
+                }
+            });
+            let note = match f {
+                Field::ZStart | Field::ZEnd => hint.to_string(),
+                Field::Hours => "lớn hơn 0".to_string(),
+                Field::H1 | Field::H2 => "từ 0 đến thời gian tính; để trống là 0".to_string(),
+                _ => "để trống nếu không xả".to_string(),
+            };
             if show_error {
-                ui.painter().rect_stroke(r.rect, CornerRadius::same(8), Stroke::new(1.5, stroke_color), egui::StrokeKind::Outside);
-            }
-            ui.label(RichText::new(unit).color(p.muted));
-            if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                enter = true;
+                // Màu lỗi luôn đi kèm biểu tượng và chữ, không chỉ dựa vào màu.
+                paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(error.unwrap().to_string()));
+            } else {
+                ui.label(RichText::new(note).size(12.0).color(p.muted));
             }
         });
-        let note = match f {
-            Field::ZStart | Field::ZEnd => hint.to_string(),
-            Field::Hours => "lớn hơn 0".to_string(),
-            Field::H1 | Field::H2 => "0 đến thời gian tính".to_string(),
-            _ => "để trống nếu không xả".to_string(),
-        };
-        if show_error {
-            // Màu lỗi luôn đi kèm chữ, không chỉ dựa vào màu.
-            paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(error.unwrap().to_string()));
-        } else {
-            ui.label(RichText::new(note).size(12.0).color(p.muted));
-        }
-        ui.add_space(6.0);
+        ui.end_row();
         enter
     }
 

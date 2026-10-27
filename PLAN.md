@@ -51,6 +51,7 @@ Mỗi bước kiểm tra: `cargo clippy --workspace -- -D warnings`, `cargo test
 - [x] B9 Chụp lại 900×600 và 1100×720, sáng và tối (cờ dev `--size=WxH`, `--scroll=N`; HOME tạm để thử chế độ tối và ngưỡng cảnh báo thấp mà không đụng cấu hình thật). Đã thấy bằng mắt: thanh trên + chip, tab, nhập, kết quả rỗng, thời tiết, kết luận, bảng, radar, biểu đồ. CHƯA xem: Lịch sử, Cài đặt, hộp thoại, 4K, trạng thái lỗi mạng
 
 - [x] B10 Sau khi người dùng chạy thử (ảnh toàn màn hình): bảng Số liệu chi tiết không bẻ dòng ô (đã chụp xác nhận); nút "Sao chép kết quả" canh trái thay vì kéo giãn (chưa chụp được vì cần nhập số — người dùng xác nhận)
+- [x] B11 Theo phản hồi người dùng: lưới nhập một cột đồng nhất (nhãn | ô 140 px + đơn vị, gợi ý/lỗi dưới ô; cùng cho nhóm xả); Kết luận + Số liệu chi tiết về cuối trang (hoàn lại thứ tự cũ của B6); tab bỏ "Cmd+n" khỏi nhãn, phím tắt trong tooltip (đã chụp xác nhận lưới nhập và tab)
 - [ ] Còn mở: thời điểm tính hiện dạng ISO (`2026-10-27T14:09:13+07:00`) → nên hiện `27/10/2026 14:09:13`; ảnh radar để dải trống bên trái khi thẻ rộng; chú giải biểu đồ che vạch ngưỡng 50 mm
 
 ### Giai đoạn 5 — Đóng gói, CI
