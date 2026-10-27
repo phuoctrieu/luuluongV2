@@ -1,17 +1,26 @@
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 use crate::provider::Snapshot;
 
-pub fn save(path: &Path, snapshot: &Snapshot) -> std::io::Result<()> {
+/// Dữ liệu cache của một nguồn (`source_id` là `Source::id`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Entry {
+    pub source_id: String,
+    pub snapshot: Snapshot,
+}
+
+pub fn save(path: &Path, entries: &[Entry]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(path, serde_json::to_string(snapshot)?)
+    std::fs::write(path, serde_json::to_string(entries)?)
 }
 
-/// `None` nếu chưa có cache hoặc file hỏng (không làm app dừng).
-pub fn load(path: &Path) -> Option<Snapshot> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+/// Rỗng nếu chưa có cache hoặc file hỏng/định dạng cũ (không làm app dừng).
+pub fn load(path: &Path) -> Vec<Entry> {
+    std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -36,6 +45,13 @@ mod tests {
         }
     }
 
+    fn entries() -> Vec<Entry> {
+        vec![
+            Entry { source_id: "openweather".into(), snapshot: snapshot() },
+            Entry { source_id: "open-meteo:gfs_seamless".into(), snapshot: snapshot() },
+        ]
+    }
+
     fn temp_path(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("luuluong-weather-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -43,17 +59,21 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_keeps_snapshot() {
+    fn roundtrip_keeps_every_source() {
         let path = temp_path("ok.json");
-        save(&path, &snapshot()).unwrap();
-        assert_eq!(load(&path), Some(snapshot()));
+        save(&path, &entries()).unwrap();
+        assert_eq!(load(&path), entries());
     }
 
     #[test]
-    fn missing_or_corrupt_file_is_none() {
-        assert_eq!(load(&temp_path("khong-co.json")), None);
+    fn missing_corrupt_or_old_format_file_is_empty() {
+        assert!(load(&temp_path("khong-co.json")).is_empty());
         let bad = temp_path("hong.json");
         std::fs::write(&bad, "{ không phải json").unwrap();
-        assert_eq!(load(&bad), None);
+        assert!(load(&bad).is_empty());
+        // Định dạng cũ: một Snapshot đơn lẻ thay vì danh sách.
+        let old = temp_path("cu.json");
+        std::fs::write(&old, serde_json::to_string(&snapshot()).unwrap()).unwrap();
+        assert!(load(&old).is_empty());
     }
 }

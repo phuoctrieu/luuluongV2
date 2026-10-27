@@ -30,7 +30,10 @@ pub struct SettingsForm {
     pub lon: String,
     pub refresh_minutes: String,
     pub rain_alert_mm: String,
+    /// Nguồn chính (thẻ ngày).
     pub source: Source,
+    /// Các nguồn bật để so sánh; nguồn chính luôn được tính vào.
+    pub compare: Vec<Source>,
     /// `system` | `light` | `dark`
     pub theme: String,
     pub operator: String,
@@ -38,6 +41,7 @@ pub struct SettingsForm {
 
 impl SettingsForm {
     pub fn from_config(c: &Config) -> SettingsForm {
+        let source = Source::from_id(&c.weather.source).unwrap_or(Source::OpenMeteo(luuluong_weather::openmeteo::Model::BestMatch));
         SettingsForm {
             q_h1: vn(c.turbine.q_h1),
             q_h2: vn(c.turbine.q_h2),
@@ -45,7 +49,8 @@ impl SettingsForm {
             lon: vn(c.weather.lon),
             refresh_minutes: c.weather.refresh_minutes.to_string(),
             rain_alert_mm: vn(c.weather.rain_alert_mm),
-            source: Source::from_id(&c.weather.source).unwrap_or(Source::OpenMeteo(luuluong_weather::openmeteo::Model::BestMatch)),
+            source,
+            compare: c.weather.sources.iter().filter_map(|id| Source::from_id(id)).collect(),
             theme: c.ui.theme.clone(),
             operator: c.ui.operator.clone(),
         }
@@ -91,6 +96,8 @@ impl SettingsForm {
         c.weather.refresh_minutes = refresh as u32;
         c.weather.rain_alert_mm = rain;
         c.weather.source = self.source.id();
+        // Thứ tự cố định theo `Source::ALL`; nguồn chính luôn có mặt.
+        c.weather.sources = Source::ALL.iter().filter(|s| **s == self.source || self.compare.contains(s)).map(|s| s.id()).collect();
         c.ui.theme = self.theme.clone();
         c.ui.operator = self.operator.trim().to_string();
         Ok(c)
@@ -135,6 +142,23 @@ mod tests {
         assert_eq!((c.ui.operator.as_str(), c.ui.theme.as_str()), ("Linh", "dark"));
         assert_eq!(c.weather.source, "open-meteo:gfs_seamless");
         assert_eq!(c.reservoir.volume_table, "C:/bang.csv");
+    }
+
+    #[test]
+    fn primary_source_is_always_among_the_compared_ones() {
+        let mut f = form();
+        f.source = Source::OpenWeather;
+        f.compare = vec![];
+        assert_eq!(f.to_config(&Config::default()).unwrap().weather.sources, vec!["openweather"]);
+    }
+
+    #[test]
+    fn compared_sources_keep_a_canonical_order() {
+        let mut f = form();
+        f.source = Source::from_id("open-meteo:icon_seamless").unwrap();
+        f.compare = vec![Source::from_id("open-meteo:gfs_seamless").unwrap(), Source::OpenWeather];
+        let c = f.to_config(&Config::default()).unwrap();
+        assert_eq!(c.weather.sources, vec!["openweather", "open-meteo:gfs_seamless", "open-meteo:icon_seamless"]);
     }
 
     #[test]

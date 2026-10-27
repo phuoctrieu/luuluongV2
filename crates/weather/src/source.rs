@@ -37,6 +37,14 @@ impl Source {
         }
     }
 
+    /// Nhãn ngắn cho bảng so sánh.
+    pub fn short_label(self) -> &'static str {
+        match self {
+            Source::OpenWeather => "OpenWeather",
+            Source::OpenMeteo(m) => m.label(),
+        }
+    }
+
     pub fn needs_key(self) -> bool {
         self == Source::OpenWeather
     }
@@ -64,6 +72,13 @@ mod tests {
         assert_eq!(Source::from_id("noaa"), None);
         assert_eq!(Source::from_id(""), None);
         assert_eq!(Source::from_id("open-meteo:khong-co"), None);
+    }
+
+    #[test]
+    fn short_labels_for_the_comparison_table() {
+        assert_eq!(Source::OpenWeather.short_label(), "OpenWeather");
+        assert_eq!(Source::OpenMeteo(Model::Gfs).short_label(), "NOAA GFS");
+        assert_eq!(Source::OpenMeteo(Model::Ecmwf).short_label(), "ECMWF");
     }
 
     #[test]

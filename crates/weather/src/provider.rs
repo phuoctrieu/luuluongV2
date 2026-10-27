@@ -15,13 +15,6 @@ pub struct Current {
     pub observed_at: i64,
 }
 
-/// Lượng mưa dự báo của một mô hình (để so sánh giữa các mô hình).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ModelRain {
-    pub model: String,
-    pub rain_mm: f64,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Day {
     pub date: NaiveDate,
@@ -35,9 +28,6 @@ pub struct Day {
     pub icon: String,
     /// Ngày thiếu mốc 3 giờ (thường là ngày đầu/cuối): chỉ là dữ liệu một phần.
     pub partial: bool,
-    /// Mưa theo từng mô hình (chỉ có với Open-Meteo); rỗng nếu nguồn không cung cấp.
-    #[serde(default)]
-    pub model_rain: Vec<ModelRain>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

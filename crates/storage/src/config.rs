@@ -38,8 +38,10 @@ pub struct Weather {
     pub units: String,
     pub lang: String,
     pub refresh_minutes: u32,
-    /// Mã nguồn, xem `luuluong_weather::Source::id`.
+    /// Nguồn chính (thẻ ngày), mã theo `luuluong_weather::Source::id`.
     pub source: String,
+    /// Các nguồn được lấy và hiện trong bảng so sánh (luôn gồm nguồn chính).
+    pub sources: Vec<String>,
     /// Ngưỡng cảnh báo mưa lớn (mm/ngày).
     pub rain_alert_mm: f64,
 }
@@ -74,6 +76,10 @@ impl Default for Weather {
             lang: "vi".into(),
             refresh_minutes: 60,
             source: "open-meteo:best_match".into(),
+            sources: ["best_match", "gfs_seamless", "ecmwf_ifs025", "icon_seamless"]
+                .iter()
+                .map(|m| format!("open-meteo:{m}"))
+                .collect(),
             rain_alert_mm: 50.0,
         }
     }
@@ -132,6 +138,25 @@ mod tests {
         assert_eq!((c.weather.lat, c.weather.lon, c.weather.refresh_minutes), (16.22, 107.25, 60));
         assert_eq!(c.weather.rain_alert_mm, 50.0);
         assert_eq!(c.ui.theme, "system");
+    }
+
+    #[test]
+    fn default_compares_the_four_open_meteo_models() {
+        let w = Config::default().weather;
+        assert_eq!(w.source, "open-meteo:best_match");
+        assert_eq!(
+            w.sources,
+            ["open-meteo:best_match", "open-meteo:gfs_seamless", "open-meteo:ecmwf_ifs025", "open-meteo:icon_seamless"]
+        );
+    }
+
+    #[test]
+    fn old_config_without_sources_still_loads_with_default_sources() {
+        let path = temp("cu.toml");
+        std::fs::write(&path, "[weather]\nsource = \"openweather\"\n").unwrap();
+        let w = Config::load(&path).unwrap().weather;
+        assert_eq!(w.source, "openweather");
+        assert_eq!(w.sources, Weather::default().sources);
     }
 
     #[test]

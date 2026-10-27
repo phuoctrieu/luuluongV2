@@ -16,17 +16,17 @@ use luuluong_storage::config::Config;
 use luuluong_storage::history::{vn_timestamp, History, Record};
 use luuluong_storage::secret::{KeyringStore, SecretStore};
 use luuluong_storage::table_loader::load_volume_table;
-use luuluong_weather::chain::{fetch_chain, Fetched};
+use luuluong_weather::multi::{fetch_all, SourceResult};
 use luuluong_weather::free::FreeProvider;
 use luuluong_weather::openmeteo::{Model, OpenMeteoProvider};
-use luuluong_weather::{cache, Snapshot, Source, WeatherError, WeatherProvider};
+use luuluong_weather::{cache, Snapshot, Source, WeatherError};
 
 mod history_screen;
 mod settings_screen;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-type WeatherResult = Result<Fetched, WeatherError>;
+type WeatherResult = Vec<SourceResult>;
 
 fn unix_now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
@@ -36,11 +36,27 @@ fn project_dirs() -> Option<directories::ProjectDirs> {
     directories::ProjectDirs::from("vn", "songbo", "luuluong")
 }
 
-fn make_provider(source: Source, key: &str) -> Box<dyn WeatherProvider + Send> {
-    match source {
-        Source::OpenWeather => Box::new(FreeProvider::new(key)),
-        Source::OpenMeteo(model) => Box::new(OpenMeteoProvider::new(model)),
+/// Trạng thái của một nguồn thời tiết trong bảng so sánh.
+struct SourceState {
+    source: Source,
+    snapshot: Option<Snapshot>,
+    error: Option<WeatherError>,
+    /// Đang hiển thị dữ liệu cache hoặc dữ liệu của lần lấy trước (lần gần nhất lỗi/chưa xong).
+    stale: bool,
+}
+
+fn primary_source(config: &Config) -> Source {
+    Source::from_id(&config.weather.source).unwrap_or(Source::OpenMeteo(Model::BestMatch))
+}
+
+/// Các nguồn được bật, luôn gồm nguồn chính.
+fn enabled_sources(config: &Config) -> Vec<Source> {
+    let primary = primary_source(config);
+    let mut list: Vec<Source> = config.weather.sources.iter().filter_map(|id| Source::from_id(id)).collect();
+    if !list.contains(&primary) {
+        list.insert(0, primary);
     }
+    list
 }
 
 fn apply_theme(ctx: &egui::Context, theme: &str) {
@@ -83,10 +99,8 @@ struct App {
     confirm_quit: bool,
     allow_close: bool,
     focus_next: Option<Field>,
-    snapshot: Option<Snapshot>,
-    /// Đang hiển thị dữ liệu cache/cũ (lần làm mới gần nhất lỗi hoặc chưa xong).
-    stale: bool,
-    weather_error: Option<WeatherError>,
+    /// Mỗi nguồn được bật một trạng thái riêng, theo thứ tự cấu hình.
+    sources: Vec<SourceState>,
     loading: bool,
     scheduler: Scheduler,
     tx: Sender<WeatherResult>,
@@ -99,7 +113,6 @@ struct App {
     secrets: Option<KeyringStore>,
     /// Hộp thoại thông báo (lỗi bảng dung tích, cấu hình hỏng…).
     modal: Option<String>,
-    weather_warning: Option<String>,
     history: Option<History>,
     history_rows: Vec<Record>,
     history_filter: String,
@@ -153,7 +166,14 @@ impl App {
             .or_else(|| std::env::var("OPENWEATHER_API_KEY").ok())
             .unwrap_or_default();
         apply_theme(&cc.egui_ctx, &config.ui.theme);
-        let snapshot = cache_path.as_deref().and_then(cache::load);
+        let mut cached = cache_path.as_deref().map(cache::load).unwrap_or_default();
+        let sources = enabled_sources(&config)
+            .into_iter()
+            .map(|source| {
+                let snapshot = cached.iter().position(|e| e.source_id == source.id()).map(|i| cached.swap_remove(i).snapshot);
+                SourceState { source, stale: snapshot.is_some(), snapshot, error: None }
+            })
+            .collect();
         let tab = match std::env::args().find_map(|a| a.strip_prefix("--tab=").map(str::to_owned)).as_deref() {
             Some("history") => Tab::History,
             Some("settings") => Tab::Settings,
@@ -170,9 +190,7 @@ impl App {
             confirm_quit: false,
             allow_close: false,
             focus_next: None,
-            stale: snapshot.is_some(),
-            snapshot,
-            weather_error: None,
+            sources,
             loading: false,
             scheduler: Scheduler::new(config.weather.refresh_minutes),
             tx,
@@ -186,7 +204,6 @@ impl App {
             data_dir,
             secrets,
             modal,
-            weather_warning: None,
             history,
             history_rows: Vec::new(),
             history_filter: String::new(),
@@ -202,56 +219,71 @@ impl App {
     }
 
     fn source(&self) -> Source {
-        Source::from_id(&self.config.weather.source).unwrap_or(Source::OpenMeteo(Model::BestMatch))
+        primary_source(&self.config)
     }
 
-    /// Nguồn chính do người dùng chọn; nguồn dự phòng khác dịch vụ để không cùng lỗi một lúc.
+    /// Đồng bộ danh sách trạng thái với cấu hình: giữ dữ liệu nguồn còn bật, thêm nguồn mới.
+    fn sync_sources(&mut self) {
+        let mut old = std::mem::take(&mut self.sources);
+        self.sources = enabled_sources(&self.config)
+            .into_iter()
+            .map(|source| match old.iter().position(|s| s.source == source) {
+                Some(i) => old.swap_remove(i),
+                None => SourceState { source, snapshot: None, error: None, stale: false },
+            })
+            .collect();
+    }
+
+    /// Lấy mọi nguồn được bật cùng lúc (OpenWeather một luồng, các mô hình Open-Meteo một lần gọi).
     fn start_fetch(&mut self, ctx: &egui::Context) {
         self.loading = true;
         self.scheduler.mark_attempt(unix_now());
-        let source = self.source();
-        let key = self.api_key.clone();
-        let fallback = match source {
-            Source::OpenWeather => Some(make_provider(Source::OpenMeteo(Model::BestMatch), &key)),
-            Source::OpenMeteo(_) if !key.trim().is_empty() => Some(make_provider(Source::OpenWeather, &key)),
-            Source::OpenMeteo(_) => None,
-        };
-        let primary = make_provider(source, &key);
+        let sources: Vec<Source> = self.sources.iter().map(|s| s.source).collect();
+        let free = FreeProvider::new(self.api_key.clone());
+        let meteo = OpenMeteoProvider::new(Model::BestMatch);
         let (lat, lon) = (self.config.weather.lat, self.config.weather.lon);
         let (tx, ctx) = (self.tx.clone(), ctx.clone());
         std::thread::spawn(move || {
-            let mut chain: Vec<&dyn WeatherProvider> = vec![primary.as_ref()];
-            if let Some(f) = &fallback {
-                chain.push(f.as_ref());
-            }
-            let _ = tx.send(fetch_chain(&chain, lat, lon));
+            let _ = tx.send(fetch_all(&sources, &free, &meteo, lat, lon));
             ctx.request_repaint();
         });
     }
 
     fn poll_weather(&mut self, ctx: &egui::Context) {
-        while let Ok(result) = self.rx.try_recv() {
+        while let Ok(results) = self.rx.try_recv() {
             let now = unix_now();
             self.loading = false;
-            match result {
-                Ok(Fetched { snapshot, primary_error }) => {
-                    self.weather_warning = primary_error
-                        .map(|e| format!("Nguồn đã chọn lỗi ({e}) Đang dùng nguồn dự phòng: {}.", snapshot.source));
-                    if let Some(path) = &self.cache_path {
-                        if let Err(e) = cache::save(path, &snapshot) {
-                            eprintln!("không ghi được cache thời tiết: {e}");
-                        }
+            let (mut any_ok, mut first_error) = (false, None);
+            for r in results {
+                // Nguồn có thể đã bị tắt trong Cài đặt khi đang tải.
+                let Some(state) = self.sources.iter_mut().find(|s| s.source == r.source) else { continue };
+                match r.result {
+                    Ok(snapshot) => {
+                        state.snapshot = Some(snapshot);
+                        state.error = None;
+                        state.stale = false;
+                        any_ok = true;
                     }
-                    self.snapshot = Some(snapshot);
-                    self.stale = false;
-                    self.weather_error = None;
-                    self.scheduler.record_ok(now);
+                    Err(e) => {
+                        state.stale = state.snapshot.is_some();
+                        first_error.get_or_insert_with(|| e.clone());
+                        state.error = Some(e);
+                    }
                 }
-                Err(e) => {
-                    self.scheduler.record_err(now, &e);
-                    self.weather_warning = None;
-                    self.stale = true;
-                    self.weather_error = Some(e);
+            }
+            if any_ok {
+                self.scheduler.record_ok(now);
+            } else if let Some(e) = first_error {
+                self.scheduler.record_err(now, &e);
+            }
+            if let Some(path) = &self.cache_path {
+                let entries: Vec<cache::Entry> = self
+                    .sources
+                    .iter()
+                    .filter_map(|s| s.snapshot.clone().map(|snapshot| cache::Entry { source_id: s.source.id(), snapshot }))
+                    .collect();
+                if let Err(e) = cache::save(path, &entries) {
+                    eprintln!("không ghi được cache thời tiết: {e}");
                 }
             }
         }
@@ -555,20 +587,34 @@ impl App {
         }
     }
 
+    /// Nguồn dùng cho thẻ hiện tại/thẻ ngày: nguồn chính nếu có dữ liệu, không thì nguồn đầu tiên có dữ liệu.
+    fn primary_state(&self) -> Option<&SourceState> {
+        let primary = self.source();
+        self.sources
+            .iter()
+            .find(|s| s.source == primary && s.snapshot.is_some())
+            .or_else(|| self.sources.iter().find(|s| s.snapshot.is_some()))
+    }
+
     fn weather_status(&self) -> String {
-        match (&self.weather_error, &self.snapshot) {
-            (Some(e), _) => format!("Thời tiết: {e}"),
-            (None, Some(s)) => format!("Thời tiết: {}", view::updated_label(s.fetched_at, s.tz_offset, self.stale)),
-            (None, None) if self.loading => "Thời tiết: đang tải…".into(),
-            (None, None) => "Thời tiết: chưa có dữ liệu".into(),
+        let total = self.sources.len();
+        let fresh = self.sources.iter().filter(|s| s.snapshot.is_some() && s.error.is_none()).count();
+        match self.primary_state().and_then(|s| s.snapshot.as_ref().map(|snap| (snap, s.stale))) {
+            Some((snap, stale)) => format!("Thời tiết: {fresh}/{total} nguồn · {}", view::updated_label(snap.fetched_at, snap.tz_offset, stale)),
+            None if self.loading => "Thời tiết: đang tải…".into(),
+            None => match self.sources.iter().find_map(|s| s.error.as_ref()) {
+                Some(e) => format!("Thời tiết: {e}"),
+                None => "Thời tiết: chưa có dữ liệu".into(),
+            },
         }
     }
 
     fn weather_strip(&mut self, ui: &mut egui::Ui, p: &Palette) {
+        let used = self.primary_state().and_then(|s| s.snapshot.clone().map(|snap| (s.source, snap, s.stale)));
         ui.horizontal(|ui| {
             title(ui, p, "Thời tiết A Lưới");
-            if let Some(s) = &self.snapshot {
-                let label = format!("{} · {}", s.source, view::updated_label(s.fetched_at, s.tz_offset, self.stale));
+            if let Some((_, snap, stale)) = &used {
+                let label = format!("{} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, *stale));
                 ui.label(RichText::new(label).size(11.0).color(p.muted));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -580,37 +626,43 @@ impl App {
                 }
             });
         });
-        if let Some(e) = &self.weather_error {
-            ui.label(RichText::new(format!("⚠ {e}")).size(12.0).color(p.error));
-        }
-        if let Some(w) = &self.weather_warning {
-            ui.label(RichText::new(format!("⚠ {w}")).size(12.0).color(p.error));
-        }
         ui.add_space(4.0);
-        let Some(s) = self.snapshot.clone() else {
+        let Some((used_source, snap, _)) = used else {
             card(p).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                let msg = if self.loading {
-                    "Đang tải thời tiết…"
-                } else if self.api_key.trim().is_empty() {
-                    "Chưa có API key OpenWeather: đặt biến môi trường OPENWEATHER_API_KEY rồi mở lại app (mục Cài đặt sẽ có ở giai đoạn 4). Phần tính lưu lượng vẫn dùng bình thường."
-                } else {
-                    "Chưa có dữ liệu thời tiết. Phần tính lưu lượng vẫn dùng bình thường."
-                };
-                ui.label(RichText::new(msg).color(p.muted));
+                if self.loading {
+                    ui.label(RichText::new("Đang tải thời tiết…").color(p.muted));
+                }
+                for s in &self.sources {
+                    if let Some(e) = &s.error {
+                        ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(12.0).color(p.error));
+                    }
+                }
+                if !self.loading && self.sources.iter().all(|s| s.error.is_none()) {
+                    ui.label(RichText::new("Chưa có dữ liệu thời tiết.").color(p.muted));
+                }
+                ui.label(RichText::new("Phần tính lưu lượng vẫn dùng bình thường.").size(11.0).color(p.muted));
             });
             return;
         };
+        if used_source != self.source() {
+            let why = self.sources.iter().find(|s| s.source == self.source()).and_then(|s| s.error.as_ref()).map(|e| format!(" ({e})")).unwrap_or_default();
+            ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
+        }
+        let threshold = self.config.weather.rain_alert_mm;
+        let dates: Vec<chrono::NaiveDate> = snap.days.iter().take(5).map(|d| d.date).collect();
+        let others: Vec<&Snapshot> = self.sources.iter().filter(|s| s.source != used_source).filter_map(|s| s.snapshot.as_ref()).collect();
         ui.columns(6, |cols| {
             card(p).show(&mut cols[0], |ui| {
                 ui.set_width(ui.available_width());
                 ui.label(RichText::new("Hiện tại").size(13.0).color(p.primary));
-                ui.label(RichText::new(format!("{}°C", format_vn(s.current.temp, 1))).font(FontId::new(24.0, theme::semibold())));
-                ui.label(RichText::new(&s.current.description).size(12.0));
-                ui.label(RichText::new(format!("Ẩm {}% · Gió {} m/s", format_vn(s.current.humidity, 0), format_vn(s.current.wind_speed, 1))).size(11.0).color(p.muted));
+                ui.label(RichText::new(format!("{}°C", format_vn(snap.current.temp, 1))).font(FontId::new(24.0, theme::semibold())));
+                ui.label(RichText::new(&snap.current.description).size(12.0));
+                ui.label(RichText::new(format!("Ẩm {}% · Gió {} m/s", format_vn(snap.current.humidity, 0), format_vn(snap.current.wind_speed, 1))).size(11.0).color(p.muted));
             });
-            for (col, day) in cols[1..].iter_mut().zip(s.days.iter().take(5)) {
-                let alert = view::rain_alert(day, self.config.weather.rain_alert_mm);
+            for (col, day) in cols[1..].iter_mut().zip(snap.days.iter().take(5)) {
+                let other_rain: Vec<f64> = others.iter().filter_map(|o| o.days.iter().find(|d| d.date == day.date)).map(|d| d.rain_mm).collect();
+                let alert = view::rain_alert(day.rain_mm, &other_rain, threshold);
                 let frame = if alert == view::RainAlert::Primary { card(p).stroke(Stroke::new(2.0, p.error)) } else { card(p) };
                 frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
@@ -621,15 +673,12 @@ impl App {
                     let rain = RichText::new(format!("Mưa {} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
                     ui.label(if alert == view::RainAlert::Primary { rain.color(p.error) } else { rain.color(p.accent_text) });
                     ui.label(RichText::new(format!("Xác suất {}%", format_vn(day.pop_percent, 0))).size(11.0).color(p.muted));
-                    for r in &day.model_rain {
-                        ui.label(RichText::new(format!("{} {} mm", r.model, format_vn(r.rain_mm, 1))).size(11.0).color(p.muted));
-                    }
                     match alert {
                         view::RainAlert::Primary => {
                             ui.label(RichText::new("⚠ Mưa lớn").size(11.0).color(p.error));
                         }
-                        view::RainAlert::OtherModels => {
-                            ui.label(RichText::new("⚠ Có mô hình báo mưa lớn").size(11.0).color(p.error));
+                        view::RainAlert::OtherSources => {
+                            ui.label(RichText::new("⚠ Có nguồn báo mưa lớn").size(11.0).color(p.error));
                         }
                         view::RainAlert::None => {}
                     }
@@ -638,6 +687,76 @@ impl App {
                     }
                 });
             }
+        });
+        self.comparison_table(ui, p, &dates);
+    }
+
+    /// Bảng đối chiếu: mỗi nguồn một hàng, mỗi ngày một cột, hàng cuối là độ chênh giữa các nguồn.
+    fn comparison_table(&self, ui: &mut egui::Ui, p: &Palette, dates: &[chrono::NaiveDate]) {
+        let threshold = self.config.weather.rain_alert_mm;
+        ui.add_space(12.0);
+        card(p).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            title(ui, p, "So sánh nguồn · mưa dự kiến (mm/ngày)");
+            ui.label(
+                RichText::new("Các nguồn thường bất đồng về mưa. Hàng cuối là chênh lệch giữa nguồn cao nhất và thấp nhất. † là ngày thiếu dữ liệu nên tổng mưa có thể thấp hơn thực tế.")
+                    .size(11.0)
+                    .color(p.muted),
+            );
+            ui.add_space(6.0);
+            egui::Grid::new("compare").num_columns(1 + dates.len()).spacing([16.0, 8.0]).striped(true).show(ui, |ui| {
+                ui.label("");
+                for d in dates {
+                    ui.label(RichText::new(format!("{} · {}", view::weekday_vn(*d), d.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
+                }
+                ui.end_row();
+                for st in &self.sources {
+                    ui.vertical(|ui| {
+                        ui.set_max_width(190.0);
+                        ui.label(RichText::new(st.source.short_label()).font(FontId::new(13.0, theme::semibold())));
+                        if let Some(e) = &st.error {
+                            ui.label(RichText::new(format!("⚠ {e}")).size(11.0).color(p.error));
+                        } else if st.stale {
+                            ui.label(RichText::new("dữ liệu cũ").size(11.0).color(p.muted));
+                        }
+                    });
+                    for date in dates {
+                        match st.snapshot.as_ref().and_then(|s| s.days.iter().find(|d| d.date == *date)) {
+                            Some(day) => {
+                                ui.vertical(|ui| {
+                                    let mark = if day.partial { " †" } else { "" };
+                                    let color = if day.rain_mm >= threshold { p.error } else { p.accent_text };
+                                    ui.label(RichText::new(format!("{}{mark}", format_vn(day.rain_mm, 1))).font(FontId::new(14.0, theme::semibold())).color(color));
+                                    let sub = format!("{}% · {}–{}°", format_vn(day.pop_percent, 0), format_vn(day.temp_min, 0), format_vn(day.temp_max, 0));
+                                    ui.label(RichText::new(sub).size(11.0).color(p.muted));
+                                });
+                            }
+                            None => {
+                                ui.label(RichText::new("—").color(p.muted));
+                            }
+                        }
+                    }
+                    ui.end_row();
+                }
+                ui.label(RichText::new("Chênh lệch").font(FontId::new(13.0, theme::semibold())));
+                for date in dates {
+                    let rains: Vec<f64> = self
+                        .sources
+                        .iter()
+                        .filter_map(|s| s.snapshot.as_ref()?.days.iter().find(|d| d.date == *date))
+                        .map(|d| d.rain_mm)
+                        .collect();
+                    if rains.len() < 2 {
+                        ui.label(RichText::new("—").color(p.muted));
+                        continue;
+                    }
+                    let spread = rains.iter().cloned().fold(f64::MIN, f64::max) - rains.iter().cloned().fold(f64::MAX, f64::min);
+                    // Chênh từ nửa ngưỡng cảnh báo trở lên coi là các nguồn bất đồng lớn.
+                    let color = if spread >= threshold / 2.0 { p.error } else { p.text };
+                    ui.label(RichText::new(format_vn(spread, 1)).font(FontId::new(14.0, theme::semibold())).color(color));
+                }
+                ui.end_row();
+            });
         });
     }
 

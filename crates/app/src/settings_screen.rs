@@ -33,12 +33,14 @@ impl App {
         match self.settings.to_config(&self.config) {
             Ok(config) => {
                 let source_changed = config.weather.source != self.config.weather.source
+                    || config.weather.sources != self.config.weather.sources
                     || config.weather.lat != self.config.weather.lat
                     || config.weather.lon != self.config.weather.lon;
                 self.turbine = Turbine { q_h1: config.turbine.q_h1, q_h2: config.turbine.q_h2 };
                 apply_theme(ctx, &config.ui.theme);
                 let minutes = config.weather.refresh_minutes;
                 self.config = config;
+                self.sync_sources();
                 if source_changed || minutes != self.scheduler_minutes() {
                     self.scheduler = super::Scheduler::new(minutes);
                 }
@@ -109,20 +111,29 @@ impl App {
             ui.set_width(ui.available_width());
             title(ui, p, "Thời tiết");
             ui.add_space(8.0);
-            ui.label(RichText::new("Nguồn dữ liệu").size(13.0));
+            ui.label(RichText::new("Nguồn chính (các thẻ ngày)").size(13.0));
             egui::ComboBox::from_id_salt("source").selected_text(self.settings.source.label()).width(320.0).show_ui(ui, |ui| {
                 for s in Source::ALL {
                     ui.selectable_value(&mut self.settings.source, s, s.label());
                 }
             });
-            ui.label(
-                RichText::new(
-                    "NOAA GFS lấy qua Open-Meteo vì api.weather.gov chỉ phủ nước Mỹ. Các mô hình có thể báo mưa rất khác nhau; \\
-                     thẻ ngày hiện lượng mưa của cả NOAA GFS, ECMWF và DWD ICON. Open-Meteo miễn phí cho mục đích phi thương mại.",
-                )
-                .size(11.0)
-                .color(p.muted),
-            );
+            ui.add_space(8.0);
+            ui.label(RichText::new("Nguồn hiện trong bảng so sánh").size(13.0));
+            for s in Source::ALL {
+                let is_primary = s == self.settings.source;
+                let mut on = is_primary || self.settings.compare.contains(&s);
+                if ui.add_enabled(!is_primary, egui::Checkbox::new(&mut on, s.label())).changed() {
+                    if on {
+                        self.settings.compare.push(s);
+                    } else {
+                        self.settings.compare.retain(|x| *x != s);
+                    }
+                }
+            }
+            let note = "Nguồn chính luôn được bật. NOAA GFS lấy qua Open-Meteo vì api.weather.gov chỉ phủ nước Mỹ. \
+Các nguồn có thể báo mưa rất khác nhau nên bảng so sánh hiện lượng mưa của từng nguồn. \
+Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần API key bên dưới.";
+            ui.label(RichText::new(note).size(11.0).color(p.muted));
             ui.add_space(8.0);
             text_row(ui, p, "Vĩ độ", "°", &mut self.settings.lat, error_for(&errors, SettingsField::Lat));
             text_row(ui, p, "Kinh độ", "°", &mut self.settings.lon, error_for(&errors, SettingsField::Lon));
