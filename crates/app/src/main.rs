@@ -89,8 +89,6 @@ enum Tab {
     Settings,
 }
 
-const REQUIRED: [Field; 5] = [Field::ZStart, Field::ZEnd, Field::Hours, Field::H1, Field::H2];
-
 struct App {
     table: VolumeTable,
     turbine: Turbine,
@@ -587,13 +585,16 @@ impl App {
                     let ui = &mut cols[0];
                     title(ui, p, "Thông số tính toán");
                     ui.add_space(8.0);
-                    for pair in REQUIRED.chunks(2) {
-                        ui.columns(2, |cols| {
-                            for (col, f) in cols.iter_mut().zip(pair) {
-                                enter_pressed |= self.input_row(col, p, *f, &errors, &hint);
-                            }
-                        });
-                    }
+                    ui.columns(2, |cols| {
+                        for (col, f) in cols.iter_mut().zip([Field::ZStart, Field::ZEnd]) {
+                            enter_pressed |= self.input_row(col, p, f, &errors, &hint);
+                        }
+                    });
+                    ui.columns(3, |cols| {
+                        for (col, f) in cols.iter_mut().zip([Field::Hours, Field::H1, Field::H2]) {
+                            enter_pressed |= self.input_row(col, p, f, &errors, &hint);
+                        }
+                    });
                     ui.add_space(4.0);
                     let spill_filled = [Field::SpillQ, Field::SpillH, Field::EcoQ].iter().any(|f| !self.form.get(*f).trim().is_empty());
                     let mut spill = egui::CollapsingHeader::new(RichText::new("Thông số xả nước (không bắt buộc)").font(FontId::new(13.0, theme::semibold())).color(p.primary))
@@ -602,11 +603,11 @@ impl App {
                         spill = spill.open(Some(true));
                     }
                     spill.show(ui, |ui| {
-                        ui.columns(2, |cols| {
-                            enter_pressed |= self.input_row(&mut cols[0], p, Field::SpillQ, &errors, &hint);
-                            enter_pressed |= self.input_row(&mut cols[1], p, Field::SpillH, &errors, &hint);
+                        ui.columns(3, |cols| {
+                            for (col, f) in cols.iter_mut().zip([Field::SpillQ, Field::SpillH, Field::EcoQ]) {
+                                enter_pressed |= self.input_row(col, p, f, &errors, &hint);
+                            }
                         });
-                        enter_pressed |= self.input_row(ui, p, Field::EcoQ, &errors, &hint);
                     });
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
@@ -1002,7 +1003,7 @@ impl App {
         let note = match f {
             Field::ZStart | Field::ZEnd => hint.to_string(),
             Field::Hours => "lớn hơn 0".to_string(),
-            Field::H1 | Field::H2 => "từ 0 đến thời gian tính; để trống là 0".to_string(),
+            Field::H1 | Field::H2 => "0 đến thời gian tính".to_string(),
             _ => "để trống nếu không xả".to_string(),
         };
         if show_error {
@@ -1013,6 +1014,21 @@ impl App {
         }
         ui.add_space(6.0);
         enter
+    }
+
+    /// Hai ô số liệu cạnh nhau, có vạch xanh bên trái.
+    fn kpi_tiles(ui: &mut egui::Ui, p: &Palette, items: [(&str, String); 2]) {
+        ui.columns(2, |cols| {
+            for (col, (name, value)) in cols.iter_mut().zip(items) {
+                let tile = Frame::new().fill(p.card).corner_radius(CornerRadius::same(6)).inner_margin(Margin::symmetric(12, 8)).show(col, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(RichText::new(name).font(FontId::new(12.0, theme::semibold())).color(p.muted));
+                    ui.label(RichText::new(value).font(FontId::new(16.0, theme::semibold())));
+                });
+                let r = tile.response.rect;
+                col.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(3.0, r.height())), CornerRadius::same(2), p.primary);
+            }
+        });
     }
 
     fn result_panel(&self, ui: &mut egui::Ui, p: &Palette) {
@@ -1027,20 +1043,14 @@ impl App {
                     ui.label(RichText::new("m³/s").size(16.0).color(p.muted));
                 });
                 ui.add_space(8.0);
-                ui.columns(2, |cols| {
-                    for (col, (name, value)) in cols.iter_mut().zip([
+                Self::kpi_tiles(
+                    ui,
+                    p,
+                    [
                         ("TỔNG LƯỢNG NƯỚC VỀ HỒ", format!("{} m³", format_vn(o.w_in, 2))),
                         ("MỰC NƯỚC ĐẦU → CUỐI", format!("{} → {} m", format_vn(inp.z_start, 2), format_vn(inp.z_end, 2))),
-                    ]) {
-                        let tile = Frame::new().fill(p.card).corner_radius(CornerRadius::same(6)).inner_margin(Margin::symmetric(12, 8)).show(col, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.label(RichText::new(name).font(FontId::new(12.0, theme::semibold())).color(p.muted));
-                            ui.label(RichText::new(value).font(FontId::new(16.0, theme::semibold())));
-                        });
-                        let r = tile.response.rect;
-                        col.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(3.0, r.height())), CornerRadius::same(2), p.primary);
-                    }
-                });
+                    ],
+                );
                 ui.add_space(8.0);
                 egui::CollapsingHeader::new(RichText::new("Thông tin chi tiết").font(FontId::new(13.0, theme::semibold())).color(p.primary))
                     .default_open(false)
@@ -1093,7 +1103,16 @@ impl App {
                         .color(p.muted),
                 );
             } else {
-                ui.label(RichText::new("Chưa có kết quả. Nhập thông số bên trái rồi nhấn TÍNH TOÁN (hoặc Enter).").color(p.muted));
+                // Khung rỗng giữ nguyên bố cục để vùng kết quả không nhảy khi có số.
+                ui.label(RichText::new("LƯU LƯỢNG VỀ HỒ").font(FontId::new(12.0, theme::semibold())).color(p.muted));
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("—").font(FontId::new(44.0, theme::semibold())).color(p.muted));
+                    ui.label(RichText::new("m³/s").size(16.0).color(p.muted));
+                });
+                ui.add_space(8.0);
+                Self::kpi_tiles(ui, p, [("TỔNG LƯỢNG NƯỚC VỀ HỒ", "—".to_string()), ("MỰC NƯỚC ĐẦU → CUỐI", "—".to_string())]);
+                ui.add_space(12.0);
+                paint::note(ui, paint::Icon::Info, p.muted, 13.0, RichText::new("Nhập 5 thông số bắt buộc rồi nhấn TÍNH TOÁN (hoặc Enter)."));
             }
             let natural = ui.min_rect().height();
             store_height(ui.ctx(), "h_result", natural + 24.0);
