@@ -13,8 +13,6 @@ permissions:
 jobs:
   macos:
     runs-on: macos-latest
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -23,8 +21,6 @@ jobs:
           components: clippy
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --locked -- -D warnings
-      - run: cargo build --release --locked -p app --target aarch64-apple-darwin
-      - run: cargo build --release --locked -p app --target x86_64-apple-darwin
       - run: ./scripts/package_macos.sh
       - uses: actions/upload-artifact@v4
         with:

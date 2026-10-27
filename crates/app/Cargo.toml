@@ -12,3 +12,7 @@ directories = "5"
 egui_plot = ">=0.32"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 luuluong-storage = { path = "../storage" }
+
+# Chỉ chạy khi build cho Windows: gắn biểu tượng vào file .exe (đặc tả mục 9).
+[build-dependencies]
+winresource = "0.1"
