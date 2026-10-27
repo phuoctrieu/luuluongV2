@@ -27,3 +27,4 @@
 - `crates/weather/src/radar.rs` — radar mưa: khung RainViewer, tile OSM (cache đĩa), toán tile, giải mã PNG
 - `UI_LAYOUT_REDESIGN.md` — đặc tả chỉnh sửa bố cục giao diện (v1.0), chỉ đổi cách trình bày, giữ nguyên logic
 - `crates/app/src/paint.rs` — biểu tượng + hiệu ứng thời tiết vẽ bằng code; `chart.rs` — biểu đồ cột so sánh nguồn; `radar_screen.rs` — thẻ radar mưa
+- `crates/app/assets/weather/` — biểu tượng thời tiết PNG 128 px (Meteocons của Bas Milius, MIT; kèm `LICENSE-meteocons.txt`), nhúng bằng `paint::sky_icon`

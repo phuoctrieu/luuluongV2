@@ -11,7 +11,7 @@ use app::schedule::Scheduler;
 use app::settings::{SettingsError, SettingsForm};
 use app::theme::{self, Palette};
 use app::view;
-use eframe::egui::{self, Align, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Margin, Modifiers, RichText, Stroke};
+use eframe::egui::{self, Align, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Margin, Modifiers, Rect, RichText, Stroke};
 use luuluong_core::validate::format_vn;
 use luuluong_core::{compute, CalcError, Inputs, Outputs, Turbine, VolumeTable};
 use luuluong_storage::config::Config;
@@ -494,43 +494,32 @@ impl eframe::App for App {
                             .font(FontId::new(16.0, theme::semibold()))
                             .color(p.header_text),
                     );
-                    ui.add_space(24.0);
-                    for (tab, name, key) in [
-                        (Tab::Calc, "Tính toán", "1"),
-                        (Tab::History, "Lịch sử", "2"),
-                        (Tab::Settings, "Cài đặt", "3"),
-                    ] {
-                        let active = self.tab == tab;
-                        let color = if active { p.header_text } else { p.header_muted };
-                        let mut text = RichText::new(name).size(14.0).color(color);
-                        if active {
-                            text = text.font(FontId::new(14.0, theme::semibold())).underline();
-                        }
-                        let r = ui
-                            .add(egui::Button::new(text).frame(false).min_size(egui::vec2(0.0, 32.0)))
-                            .on_hover_cursor(egui::CursorIcon::PointingHand);
-                        if r.on_hover_text(format!("Ctrl/Cmd + {key}")).clicked() {
-                            self.tab = tab;
-                        }
-                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let dark = ctx.theme() == egui::Theme::Dark;
-                        let label = if dark { "Giao diện sáng" } else { "Giao diện tối" };
-                        let toggle = egui::Button::new(RichText::new(label).color(p.header_text))
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::new(1.0, p.header_muted))
-                            .min_size(egui::vec2(0.0, 32.0));
-                        if ui.add(toggle).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                            let next = if dark { "light" } else { "dark" };
-                            apply_theme(ctx, next);
-                            self.config.ui.theme = next.into();
-                            self.settings.theme = next.into();
-                            let _ = self.save_config();
-                        }
-                        ui.add_space(8.0);
                         ui.label(RichText::new(self.weather_status()).size(12.0).color(p.header_muted));
                     });
                 });
+            });
+
+        egui::SidePanel::right("side_nav")
+            .exact_width(124.0)
+            .resizable(false)
+            .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0, p.border)).inner_margin(Margin::same(8)))
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+                for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::History, "Lịch sử", "2"), (Tab::Settings, "Cài đặt", "3")] {
+                    let active = self.tab == tab;
+                    let text = if active {
+                        RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
+                    } else {
+                        RichText::new(name).size(14.0).color(p.text)
+                    };
+                    let fill = if active { p.primary.gamma_multiply(0.14) } else { Color32::TRANSPARENT };
+                    let button = egui::Button::new(text).fill(fill).stroke(Stroke::NONE).min_size(egui::vec2(ui.available_width(), 36.0));
+                    let r = ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(format!("Ctrl/Cmd + {key}"));
+                    if r.clicked() {
+                        self.tab = tab;
+                    }
+                }
             });
 
         egui::CentralPanel::default().frame(Frame::new().fill(p.bg).inner_margin(Margin::same(16))).show(ctx, |ui| {
@@ -588,52 +577,55 @@ impl App {
         let previous = self.form.clone();
         let mut enter_pressed = false;
 
-        ui.columns(2, |cols| {
-            card(p).show(&mut cols[0], |ui| {
-                ui.set_width(ui.available_width());
-                title(ui, p, "Thông số tính toán");
-                ui.add_space(8.0);
-                for pair in REQUIRED.chunks(2) {
-                    ui.columns(2, |cols| {
-                        for (col, f) in cols.iter_mut().zip(pair) {
-                            enter_pressed |= self.input_row(col, p, *f, &errors, &hint);
+        card(p).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.columns(2, |cols| {
+                {
+                    let ui = &mut cols[0];
+                    title(ui, p, "Thông số tính toán");
+                    ui.add_space(8.0);
+                    for pair in REQUIRED.chunks(2) {
+                        ui.columns(2, |cols| {
+                            for (col, f) in cols.iter_mut().zip(pair) {
+                                enter_pressed |= self.input_row(col, p, *f, &errors, &hint);
+                            }
+                        });
+                    }
+                    ui.add_space(4.0);
+                    let spill_filled = [Field::SpillQ, Field::SpillH, Field::EcoQ].iter().any(|f| !self.form.get(*f).trim().is_empty());
+                    let mut spill = egui::CollapsingHeader::new(RichText::new("Thông số xả nước (không bắt buộc)").font(FontId::new(13.0, theme::semibold())).color(p.primary))
+                        .default_open(spill_filled);
+                    if std::mem::take(&mut self.show_spill) {
+                        spill = spill.open(Some(true));
+                    }
+                    spill.show(ui, |ui| {
+                        ui.columns(2, |cols| {
+                            enter_pressed |= self.input_row(&mut cols[0], p, Field::SpillQ, &errors, &hint);
+                            enter_pressed |= self.input_row(&mut cols[1], p, Field::SpillH, &errors, &hint);
+                        });
+                        enter_pressed |= self.input_row(ui, p, Field::EcoQ, &errors, &hint);
+                    });
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        let calc = egui::Button::new(RichText::new("TÍNH TOÁN").font(FontId::new(15.0, theme::semibold())).color(p.on_accent))
+                            .fill(p.accent)
+                            .min_size(egui::vec2(180.0, 40.0));
+                        if ui.add(calc).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            self.try_compute();
+                        }
+                        let clear = egui::Button::new(RichText::new("Xóa dữ liệu").color(p.muted))
+                            .fill(Color32::TRANSPARENT)
+                            .min_size(egui::vec2(0.0, 32.0));
+                        if ui.add(clear).on_hover_text("Chỉ xóa các ô nhập, không xóa lịch sử. Ctrl/Cmd + Backspace").clicked() {
+                            self.clear();
                         }
                     });
+                    let natural = ui.min_rect().height();
+                    store_height(ui.ctx(), "h_input", natural);
+                    ui.add_space((stored_height(ui.ctx(), "h_result") - natural).max(0.0));
                 }
-                ui.add_space(4.0);
-                let spill_filled = [Field::SpillQ, Field::SpillH, Field::EcoQ].iter().any(|f| !self.form.get(*f).trim().is_empty());
-                let mut spill = egui::CollapsingHeader::new(RichText::new("Thông số xả nước (không bắt buộc)").font(FontId::new(13.0, theme::semibold())).color(p.primary))
-                    .default_open(spill_filled);
-                if std::mem::take(&mut self.show_spill) {
-                    spill = spill.open(Some(true));
-                }
-                spill.show(ui, |ui| {
-                    ui.columns(2, |cols| {
-                        enter_pressed |= self.input_row(&mut cols[0], p, Field::SpillQ, &errors, &hint);
-                        enter_pressed |= self.input_row(&mut cols[1], p, Field::SpillH, &errors, &hint);
-                    });
-                    enter_pressed |= self.input_row(ui, p, Field::EcoQ, &errors, &hint);
-                });
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    let calc = egui::Button::new(RichText::new("TÍNH TOÁN").font(FontId::new(15.0, theme::semibold())).color(p.on_accent))
-                        .fill(p.accent)
-                        .min_size(egui::vec2(180.0, 40.0));
-                    if ui.add(calc).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                        self.try_compute();
-                    }
-                    let clear = egui::Button::new(RichText::new("Xóa dữ liệu").color(p.muted))
-                        .fill(Color32::TRANSPARENT)
-                        .min_size(egui::vec2(0.0, 32.0));
-                    if ui.add(clear).on_hover_text("Chỉ xóa các ô nhập, không xóa lịch sử. Ctrl/Cmd + Backspace").clicked() {
-                        self.clear();
-                    }
-                });
-                let natural = ui.min_rect().height();
-                store_height(ui.ctx(), "h_input", natural);
-                ui.add_space((stored_height(ui.ctx(), "h_result") - natural).max(0.0));
+                self.result_panel(&mut cols[1], p);
             });
-            self.result_card(&mut cols[1], p);
         });
 
         ui.add_space(12.0);
@@ -650,6 +642,8 @@ impl App {
             }
         });
         if let Some(d) = &data {
+            ui.add_space(12.0);
+            self.verdict_card(ui, p, d);
             ui.add_space(12.0);
             self.detail_card(ui, p, d);
         }
@@ -734,7 +728,7 @@ impl App {
                     ("✓ Đã cập nhật".to_string(), p.primary)
                 };
                 ui.horizontal_top(|ui| {
-                    ui.allocate_ui(egui::vec2(260.0, 150.0), |ui| self.weather_hero(ui, &snap));
+                    ui.allocate_ui(egui::vec2(280.0, 150.0), |ui| self.weather_hero(ui, &snap));
                     ui.vertical(|ui| {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
@@ -757,8 +751,11 @@ impl App {
         if animate {
             ui.ctx().request_repaint_after(Duration::from_millis(33));
         }
+        let icon = paint::sky_icon(ui.ctx(), sky, night);
         let (white, soft) = (Color32::WHITE, Color32::from_rgb(0xE8, 0xED, 0xF7));
         let painter = ui.painter();
+        let icon_rect = Rect::from_min_size(rect.right_top() + egui::vec2(-80.0, 8.0), egui::vec2(72.0, 72.0));
+        painter.image(icon.id(), icon_rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         let origin = rect.left_top();
         painter.text(origin + egui::vec2(16.0, 12.0), egui::Align2::LEFT_TOP, "Hiện tại", FontId::proportional(12.0), soft);
         painter.text(origin + egui::vec2(16.0, 28.0), egui::Align2::LEFT_TOP, format!("{}°C", format_vn(snap.current.temp, 1)), FontId::new(44.0, theme::semibold()), white);
@@ -784,7 +781,8 @@ impl App {
                 frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
                     ui.label(RichText::new(format!("{} · {}", view::weekday_vn(day.date), day.date.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
-                    paint::icon_in(ui, 30.0, view::Sky::from_description(&day.description), p);
+                    let icon = paint::sky_icon(ui.ctx(), view::Sky::from_description(&day.description), false);
+                    ui.image((icon.id(), egui::vec2(40.0, 40.0)));
                     ui.label(RichText::new(format!("{}°–{}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(12.0));
                     let rain = RichText::new(format!("{} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
                     ui.label(if alert == view::RainAlert::Primary { rain.color(p.error) } else { rain.color(p.accent_text) });
@@ -879,20 +877,25 @@ impl App {
             .height()
     }
 
-    /// Kết luận từng ngày và bảng số liệu chi tiết, toàn chiều rộng, thu gọn được.
+    /// Thẻ kết luận từng ngày, toàn chiều rộng.
+    fn verdict_card(&self, ui: &mut egui::Ui, p: &Palette, d: &CompareData) {
+        card(p).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            title(ui, p, "Kết luận theo ngày");
+            ui.add_space(6.0);
+            for v in &d.verdicts {
+                ui.label(RichText::new(format!("{} {}", agreement_symbol(v.level), v.text)).size(13.0).color(agreement_color(p, v.level)));
+            }
+        });
+    }
+
+    /// Thẻ bảng số liệu chi tiết theo ngày, toàn chiều rộng.
     fn detail_card(&self, ui: &mut egui::Ui, p: &Palette, d: &CompareData) {
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            title(ui, p, "Kết luận và số liệu chi tiết theo ngày");
-            ui.add_space(4.0);
-            egui::CollapsingHeader::new(RichText::new("Kết luận từng ngày").font(FontId::new(13.0, theme::semibold())).color(p.primary)).default_open(true).show(ui, |ui| {
-                for v in &d.verdicts {
-                    ui.label(RichText::new(format!("{} {}", agreement_symbol(v.level), v.text)).size(13.0).color(agreement_color(p, v.level)));
-                }
-            });
-            egui::CollapsingHeader::new(RichText::new("Bảng số liệu chi tiết").font(FontId::new(13.0, theme::semibold())).color(p.primary)).default_open(true).show(ui, |ui| {
-                self.comparison_table(ui, p, &d.dates);
-            });
+            title(ui, p, "Số liệu chi tiết theo ngày");
+            ui.add_space(6.0);
+            self.comparison_table(ui, p, &d.dates);
         });
     }
 
@@ -989,8 +992,8 @@ impl App {
         enter
     }
 
-    fn result_card(&self, ui: &mut egui::Ui, p: &Palette) {
-        card(p).show(ui, |ui| {
+    fn result_panel(&self, ui: &mut egui::Ui, p: &Palette) {
+        Frame::new().fill(p.bg).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(12)).show(ui, |ui| {
             ui.set_width(ui.available_width());
             title(ui, p, "Kết quả tính toán");
             ui.add_space(8.0);
@@ -1006,7 +1009,7 @@ impl App {
                         ("TỔNG LƯỢNG NƯỚC VỀ HỒ", format!("{} m³", format_vn(o.w_in, 2))),
                         ("MỰC NƯỚC ĐẦU → CUỐI", format!("{} → {} m", format_vn(inp.z_start, 2), format_vn(inp.z_end, 2))),
                     ]) {
-                        let tile = Frame::new().fill(p.bg).corner_radius(CornerRadius::same(6)).inner_margin(Margin::symmetric(12, 8)).show(col, |ui| {
+                        let tile = Frame::new().fill(p.card).corner_radius(CornerRadius::same(6)).inner_margin(Margin::symmetric(12, 8)).show(col, |ui| {
                             ui.set_width(ui.available_width());
                             ui.label(RichText::new(name).font(FontId::new(12.0, theme::semibold())).color(p.muted));
                             ui.label(RichText::new(value).font(FontId::new(16.0, theme::semibold())));
@@ -1070,8 +1073,8 @@ impl App {
                 ui.label(RichText::new("Chưa có kết quả. Nhập thông số bên trái rồi nhấn TÍNH TOÁN (hoặc Enter).").color(p.muted));
             }
             let natural = ui.min_rect().height();
-            store_height(ui.ctx(), "h_result", natural);
-            ui.add_space((stored_height(ui.ctx(), "h_input") - natural).max(0.0));
+            store_height(ui.ctx(), "h_result", natural + 24.0);
+            ui.add_space((stored_height(ui.ctx(), "h_input") - 24.0 - natural).max(0.0));
         });
     }
 }

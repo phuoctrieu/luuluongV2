@@ -1,9 +1,8 @@
-//! Biểu tượng và hiệu ứng thời tiết vẽ bằng code (không cần tải ảnh, chạy được khi mất mạng).
+//! Hiệu ứng nền thời tiết vẽ bằng code và biểu tượng thời tiết nhúng sẵn (chạy được khi mất mạng).
 //! Hiệu ứng chỉ động khi `animate` bật; tắt thì vẽ khung tĩnh.
 
 use eframe::egui::{self, epaint::Mesh, Color32, CornerRadius, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
-use crate::theme::Palette;
 use crate::view::Sky;
 
 /// Số giả ngẫu nhiên ổn định theo (i, salt) trong [0, 1].
@@ -151,68 +150,27 @@ pub fn hero_background(painter: &Painter, rect: Rect, sky: Sky, night: bool, tim
     }
 }
 
-/// Biểu tượng nhỏ (khoảng `size` px) cho thẻ ngày, màu theo bảng màu giao diện để đủ tương phản.
-pub fn icon(painter: &Painter, center: Pos2, size: f32, sky: Sky, p: &Palette) {
-    let r = size * 0.5;
-    let sun = p.accent_text;
-    let body = p.muted;
-    let drop = p.primary;
-    let stroke = |c: Color32| Stroke::new(1.8, c);
-    let draw_sun = |c: Pos2, rr: f32| {
-        painter.circle_stroke(c, rr * 0.5, stroke(sun));
-        for i in 0..8 {
-            let a = i as f32 / 8.0 * std::f32::consts::TAU;
-            let (s, co) = a.sin_cos();
-            painter.line_segment([c + Vec2::new(co, s) * rr * 0.72, c + Vec2::new(co, s) * rr * 0.95], stroke(sun));
-        }
+/// Biểu tượng thời tiết dạng ảnh (Meteocons của Bas Milius, giấy phép MIT, xem `assets/weather/`), nạp một lần rồi giữ trong bộ nhớ tạm của egui.
+pub fn sky_icon(ctx: &egui::Context, sky: Sky, night: bool) -> egui::TextureHandle {
+    let (name, bytes): (&str, &[u8]) = match (sky, night) {
+        (Sky::Clear, false) => ("clear-day", include_bytes!("../assets/weather/clear-day.png")),
+        (Sky::Clear, true) => ("clear-night", include_bytes!("../assets/weather/clear-night.png")),
+        (Sky::PartlyCloudy, false) => ("partly-cloudy-day", include_bytes!("../assets/weather/partly-cloudy-day.png")),
+        (Sky::PartlyCloudy, true) => ("partly-cloudy-night", include_bytes!("../assets/weather/partly-cloudy-night.png")),
+        (Sky::Cloudy, _) => ("overcast", include_bytes!("../assets/weather/overcast.png")),
+        (Sky::Fog, _) => ("fog", include_bytes!("../assets/weather/fog.png")),
+        (Sky::Drizzle, _) => ("drizzle", include_bytes!("../assets/weather/drizzle.png")),
+        (Sky::Rain, _) => ("rain", include_bytes!("../assets/weather/rain.png")),
+        (Sky::HeavyRain, _) => ("extreme-rain", include_bytes!("../assets/weather/extreme-rain.png")),
+        (Sky::Thunder, _) => ("thunderstorms-rain", include_bytes!("../assets/weather/thunderstorms-rain.png")),
     };
-    let draw_cloud = |c: Pos2, rr: f32| {
-        painter.circle_stroke(c + Vec2::new(-rr * 0.45, rr * 0.1), rr * 0.38, stroke(body));
-        painter.circle_stroke(c + Vec2::new(-rr * 0.05, -rr * 0.2), rr * 0.5, stroke(body));
-        painter.circle_stroke(c + Vec2::new(rr * 0.5, rr * 0.05), rr * 0.4, stroke(body));
-        painter.line_segment([c + Vec2::new(-rr * 0.6, rr * 0.48), c + Vec2::new(rr * 0.75, rr * 0.48)], stroke(body));
-    };
-    let draw_rain = |c: Pos2, rr: f32, n: usize| {
-        for i in 0..n {
-            let x = c.x - rr * 0.5 + i as f32 * rr * 0.5;
-            painter.line_segment([Pos2::new(x, c.y + rr * 0.62), Pos2::new(x - rr * 0.15, c.y + rr * 0.98)], stroke(drop));
-        }
-    };
-    match sky {
-        Sky::Clear => draw_sun(center, r),
-        Sky::PartlyCloudy => {
-            draw_sun(center + Vec2::new(r * 0.35, -r * 0.35), r * 0.7);
-            draw_cloud(center + Vec2::new(-r * 0.1, r * 0.15), r * 0.9);
-        }
-        Sky::Cloudy => draw_cloud(center, r),
-        Sky::Fog => {
-            for i in 0..4 {
-                let y = center.y - r * 0.6 + i as f32 * r * 0.4;
-                painter.line_segment([Pos2::new(center.x - r * 0.8, y), Pos2::new(center.x + r * 0.8, y)], stroke(body));
-            }
-        }
-        Sky::Drizzle => {
-            draw_cloud(center - Vec2::new(0.0, r * 0.2), r * 0.9);
-            draw_rain(center - Vec2::new(0.0, r * 0.1), r * 0.9, 2);
-        }
-        Sky::Rain => {
-            draw_cloud(center - Vec2::new(0.0, r * 0.2), r * 0.9);
-            draw_rain(center - Vec2::new(0.0, r * 0.1), r * 0.9, 3);
-        }
-        Sky::HeavyRain => {
-            draw_cloud(center - Vec2::new(0.0, r * 0.25), r * 0.9);
-            draw_rain(center - Vec2::new(r * 0.1, r * 0.1), r * 1.1, 4);
-        }
-        Sky::Thunder => {
-            draw_cloud(center - Vec2::new(0.0, r * 0.25), r * 0.9);
-            let bolt = vec![center + Vec2::new(r * 0.1, r * 0.3), center + Vec2::new(-r * 0.15, r * 0.65), center + Vec2::new(r * 0.1, r * 0.65), center + Vec2::new(-r * 0.1, r * 1.0)];
-            painter.add(Shape::line(bolt, Stroke::new(2.0, sun)));
-        }
+    let id = egui::Id::new(("sky_icon", name));
+    if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+        return texture;
     }
-}
-
-/// Vùng vẽ biểu tượng trong ô cố định.
-pub fn icon_in(ui: &mut egui::Ui, size: f32, sky: Sky, p: &Palette) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
-    icon(ui.painter(), rect.center(), size * 0.85, sky, p);
+    // Ảnh nhúng sẵn lúc build nên giải mã không thể lỗi.
+    let img = luuluong_weather::radar::decode_png(bytes).expect("ảnh biểu tượng nhúng sẵn hợp lệ");
+    let texture = ctx.load_texture(name, egui::ColorImage::from_rgba_unmultiplied([img.width, img.height], &img.data), egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+    texture
 }
