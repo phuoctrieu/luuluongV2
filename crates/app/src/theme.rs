@@ -103,7 +103,7 @@ fn visuals(theme: Theme, p: &Palette) -> egui::Visuals {
     v.extreme_bg_color = p.card; // nền ô nhập
     v.override_text_color = Some(p.text);
     v.selection.bg_fill = p.primary.gamma_multiply(0.35);
-    v.selection.stroke = Stroke::new(1.0, p.primary);
+    v.selection.stroke = Stroke::new(1.0_f32, p.primary);
     let r = CornerRadius::same(8);
     for w in [
         &mut v.widgets.noninteractive,
@@ -114,9 +114,9 @@ fn visuals(theme: Theme, p: &Palette) -> egui::Visuals {
     ] {
         w.corner_radius = r;
     }
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, p.border);
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0, p.border);
-    v.widgets.hovered.bg_stroke = Stroke::new(1.5, p.primary);
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.border);
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, p.border);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.5_f32, p.primary);
     v.window_corner_radius = r;
     v
 }

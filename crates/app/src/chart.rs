@@ -43,7 +43,7 @@ pub fn rain_chart(ui: &mut egui::Ui, p: &Palette, day_labels: &[String], series:
         let (dash, _) = ui.allocate_exact_size(egui::vec2(18.0, 12.0), egui::Sense::hover());
         let y = dash.center().y;
         for x in [0.0, 7.0, 14.0] {
-            ui.painter().line_segment([egui::pos2(dash.left() + x, y), egui::pos2(dash.left() + x + 4.0, y)], egui::Stroke::new(2.0, p.error));
+            ui.painter().line_segment([egui::pos2(dash.left() + x, y), egui::pos2(dash.left() + x + 4.0, y)], egui::Stroke::new(2.0_f32, p.error));
         }
         ui.label(RichText::new("Ngưỡng cảnh báo").size(12.0));
     });
@@ -82,7 +82,7 @@ pub fn rain_chart(ui: &mut egui::Ui, p: &Palette, day_labels: &[String], series:
                     .values
                     .iter()
                     .enumerate()
-                    .filter_map(|(di, v)| v.map(|v| Bar::new(di as f64 + offset, v).width(bar_width * 0.86).fill(color).stroke(egui::Stroke::new(1.0, p.card))))
+                    .filter_map(|(di, v)| v.map(|v| Bar::new(di as f64 + offset, v).width(bar_width * 0.86).fill(color).stroke(egui::Stroke::new(1.0_f32, p.card))))
                     .collect();
                 plot.bar_chart(BarChart::new(s.label.clone(), bars).color(color).allow_hover(false));
                 // Nhãn giá trị luôn hiện trên đầu cột (không chỉ dựa vào màu).
@@ -93,7 +93,7 @@ pub fn rain_chart(ui: &mut egui::Ui, p: &Palette, day_labels: &[String], series:
                     }
                 }
             }
-            plot.hline(HLine::new("Ngưỡng cảnh báo", threshold_mm).color(p.error).style(egui_plot::LineStyle::dashed_loose()).width(1.5).allow_hover(false));
+            plot.hline(HLine::new("Ngưỡng cảnh báo", threshold_mm).color(p.error).style(egui_plot::LineStyle::dashed_loose()).width(1.5_f32).allow_hover(false));
         });
 
     if let Some(di) = hovered {

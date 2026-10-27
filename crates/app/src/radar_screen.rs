@@ -241,9 +241,9 @@ impl App {
 
             // Vị trí nhà máy.
             let c = origin + Vec2::new(px as f32, py as f32);
-            painter.circle_stroke(c, 12.0, Stroke::new(1.5, p.accent));
+            painter.circle_stroke(c, 12.0, Stroke::new(1.5_f32, p.accent));
             painter.circle_filled(c, 6.0, p.accent);
-            painter.circle_stroke(c, 6.0, Stroke::new(2.0, Color32::WHITE));
+            painter.circle_stroke(c, 6.0, Stroke::new(2.0_f32, Color32::WHITE));
             let pill = |text: &str, pos: egui::Pos2, align_right: bool| {
                 let galley = painter.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), Color32::WHITE);
                 let size = galley.size();

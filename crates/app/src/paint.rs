@@ -81,7 +81,7 @@ pub fn hero_background(painter: &Painter, rect: Rect, sky: Sky, night: bool, tim
             let (s, co) = ang.sin_cos();
             painter.line_segment(
                 [c + Vec2::new(co, s) * 28.0, c + Vec2::new(co, s) * 38.0],
-                Stroke::new(2.0, Color32::from_rgba_unmultiplied(255, 214, 102, 170)),
+                Stroke::new(2.0_f32, Color32::from_rgba_unmultiplied(255, 214, 102, 170)),
             );
         }
     }
@@ -135,7 +135,7 @@ pub fn hero_background(painter: &Painter, rect: Rect, sky: Sky, night: bool, tim
         let travel = h + len;
         let y = (hash01(i, 12) * travel + t * speed * (0.8 + 0.4 * hash01(i, 13))) % travel - len;
         let x = hash01(i, 14) * (w + 40.0) - 20.0 + y * 0.18;
-        painter.line_segment([at(x, y), at(x - len * 0.18, y + len)], Stroke::new(1.3, Color32::from_rgba_unmultiplied(190, 215, 255, alpha)));
+        painter.line_segment([at(x, y), at(x - len * 0.18, y + len)], Stroke::new(1.3_f32, Color32::from_rgba_unmultiplied(190, 215, 255, alpha)));
     }
 
     // Dông: chớp sáng thỉnh thoảng (khoảng 6 giây một lần) và tia sét.
@@ -145,7 +145,7 @@ pub fn hero_background(painter: &Painter, rect: Rect, sky: Sky, night: bool, tim
             let k = 1.0 - phase / 0.05;
             painter.rect_filled(rect, CornerRadius::ZERO, Color32::from_rgba_unmultiplied(255, 255, 255, (70.0 * k) as u8));
             let pts: Vec<Pos2> = [(0.0, 0.0), (-10.0, 22.0), (4.0, 24.0), (-12.0, 54.0)].iter().map(|(dx, dy)| at(w * 0.7 + dx, h * 0.12 + dy)).collect();
-            painter.add(Shape::line(pts, Stroke::new(2.5, Color32::from_rgba_unmultiplied(255, 240, 160, (255.0 * k) as u8))));
+            painter.add(Shape::line(pts, Stroke::new(2.5_f32, Color32::from_rgba_unmultiplied(255, 240, 160, (255.0 * k) as u8))));
         }
     }
 }

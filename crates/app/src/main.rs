@@ -447,7 +447,7 @@ fn agreement_color(p: &Palette, l: view::Agreement) -> Color32 {
 fn card(p: &Palette) -> Frame {
     Frame::new()
         .fill(p.card)
-        .stroke(Stroke::new(1.0, p.border))
+        .stroke(Stroke::new(1.0_f32, p.border))
         .shadow(egui::epaint::Shadow { offset: [0, 1], blur: 4, spread: 0, color: Color32::from_black_alpha(18) })
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::same(CARD_PAD as i8))
@@ -509,7 +509,7 @@ impl eframe::App for App {
                             ui.add_space(12.0);
                             let chip = Frame::new()
                                 .fill(p.error)
-                                .stroke(Stroke::new(1.0, p.header_text))
+                                .stroke(Stroke::new(1.0_f32, p.header_text))
                                 .corner_radius(CornerRadius::same(12))
                                 .inner_margin(Margin::symmetric(10, 3))
                                 .show(ui, |ui| {
@@ -526,7 +526,7 @@ impl eframe::App for App {
             self.tab = Tab::Calc;
         }
         egui::TopBottomPanel::top("tabs")
-            .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0, p.border)).inner_margin(Margin::symmetric(16, 0)))
+            .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0_f32, p.border)).inner_margin(Margin::symmetric(16, 0)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
@@ -596,7 +596,7 @@ impl eframe::App for App {
                         ui.add_space(16.0);
                         let quit = egui::Button::new(RichText::new("Thoát").size(14.0).color(p.error))
                             .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::new(1.0, p.error))
+                            .stroke(Stroke::new(1.0_f32, p.error))
                             .min_size(egui::vec2(80.0, 34.0));
                         if ui.add(quit).clicked() {
                             self.allow_close = true;
@@ -860,7 +860,7 @@ impl App {
                 let other_rain: Vec<f64> = others.iter().filter_map(|o| o.days.iter().find(|d| d.date == day.date)).map(|d| d.rain_mm).collect();
                 let alert = view::rain_alert(day.rain_mm, &other_rain, threshold);
                 let base = Frame::new().fill(p.bg).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8));
-                let frame = base.stroke(Stroke::new(2.0, if alert == view::RainAlert::Primary { p.error } else { Color32::TRANSPARENT }));
+                let frame = base.stroke(Stroke::new(2.0_f32, if alert == view::RainAlert::Primary { p.error } else { Color32::TRANSPARENT }));
                 let shown = frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
                     ui.set_min_height((day_h - 20.0).max(0.0));
@@ -1075,7 +1075,7 @@ impl App {
                         .margin(Margin::symmetric(8, 8)),
                 );
                 if show_error {
-                    ui.painter().rect_stroke(r.rect, CornerRadius::same(8), Stroke::new(1.5, p.error), egui::StrokeKind::Outside);
+                    ui.painter().rect_stroke(r.rect, CornerRadius::same(8), Stroke::new(1.5_f32, p.error), egui::StrokeKind::Outside);
                 }
                 ui.label(RichText::new(unit).color(p.muted));
                 if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {

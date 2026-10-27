@@ -43,7 +43,7 @@ fn text_row(ui: &mut egui::Ui, p: &Palette, label: &str, unit: &str, value: &mut
         ui.horizontal(|ui| {
             let r = ui.add(egui::TextEdit::singleline(value).desired_width(160.0).margin(Margin::symmetric(8, 8)));
             if error.is_some() {
-                ui.painter().rect_stroke(r.rect, egui::CornerRadius::same(8), egui::Stroke::new(1.5, p.error), egui::StrokeKind::Outside);
+                ui.painter().rect_stroke(r.rect, egui::CornerRadius::same(8), egui::Stroke::new(1.5_f32, p.error), egui::StrokeKind::Outside);
             }
             ui.label(RichText::new(unit).color(p.muted));
         });
