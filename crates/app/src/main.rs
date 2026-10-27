@@ -11,6 +11,7 @@ use app::schedule::Scheduler;
 use app::settings::{SettingsError, SettingsForm};
 use app::theme::{self, Palette};
 use app::view;
+use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{self, Align, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Margin, Modifiers, Rect, RichText, Stroke};
 use luuluong_core::validate::format_vn;
 use luuluong_core::{compute, CalcError, Inputs, Outputs, Turbine, VolumeTable};
@@ -131,6 +132,8 @@ struct App {
     key_input: String,
     table_path_input: String,
     table_notice: Option<String>,
+    /// Cờ dev `--scroll=N`: cuộn sẵn N px ở khung hình đầu để chụp ảnh phần dưới.
+    dev_scroll: Option<f32>,
 }
 
 impl App {
@@ -222,6 +225,7 @@ impl App {
             settings_notice: None,
             key_input: String::new(),
             table_notice: None,
+            dev_scroll: std::env::args().find_map(|a| a.strip_prefix("--scroll=").and_then(|v| v.parse().ok())),
         }
     }
 
@@ -450,6 +454,12 @@ fn card(p: &Palette) -> Frame {
         .inner_margin(Margin::same(CARD_PAD as i8))
 }
 
+fn accent_button(p: &Palette, text: &str) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text.to_owned()).font(FontId::new(14.0, theme::semibold())).color(p.on_accent))
+        .fill(p.accent)
+        .min_size(egui::vec2(96.0, 34.0))
+}
+
 fn title(ui: &mut egui::Ui, p: &Palette, text: &str) {
     ui.label(RichText::new(text.to_uppercase()).font(FontId::new(13.0, theme::semibold())).color(p.primary));
 }
@@ -523,13 +533,18 @@ impl eframe::App for App {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::History, "Lịch sử", "2"), (Tab::Settings, "Cài đặt", "3")] {
                         let active = self.tab == tab;
-                        let text = if active {
-                            RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
+                        let (name_font, name_color) = if active {
+                            (FontId::new(14.0, theme::semibold()), p.primary)
                         } else {
-                            RichText::new(name).size(14.0).color(p.muted)
+                            (FontId::proportional(14.0), p.muted)
                         };
-                        let button = egui::Button::new(text).frame(false).min_size(egui::vec2(96.0, 38.0));
-                        let r = ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(format!("Ctrl/Cmd + {key}"));
+                        // Phím tắt hiện ngay cạnh tên tab để người dùng chuột cũng biết.
+                        let modifier = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+                        let mut label = LayoutJob::default();
+                        label.append(name, 0.0, TextFormat { font_id: name_font, color: name_color, ..Default::default() });
+                        label.append(&format!("  {modifier}+{key}"), 0.0, TextFormat { font_id: FontId::proportional(12.0), color: p.muted, ..Default::default() });
+                        let button = egui::Button::new(label).frame(false).min_size(egui::vec2(120.0, 38.0));
+                        let r = ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand);
                         if active {
                             let line = Rect::from_min_max(egui::pos2(r.rect.left(), r.rect.bottom() - 3.0), r.rect.right_bottom());
                             ui.painter().rect_filled(line, CornerRadius::ZERO, p.primary);
@@ -542,7 +557,11 @@ impl eframe::App for App {
             });
 
         egui::CentralPanel::default().frame(Frame::new().fill(p.bg).inner_margin(Margin::same(16))).show(ctx, |ui| {
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match self.tab {
+            let mut area = egui::ScrollArea::vertical().auto_shrink([false, false]);
+            if let Some(y) = self.dev_scroll.take() {
+                area = area.vertical_scroll_offset(y);
+            }
+            area.show(ui, |ui| match self.tab {
                 Tab::Calc => self.calc_screen(ui, p),
                 Tab::History => self.history_screen(ui, p),
                 Tab::Settings => self.settings_screen(ui, p),
@@ -551,14 +570,15 @@ impl eframe::App for App {
 
         if let Some(message) = self.modal.clone() {
             egui::Window::new("Thông báo")
+                .frame(card(p).inner_margin(Margin::same(20)))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
                     ui.set_max_width(420.0);
-                    ui.label(message);
-                    ui.add_space(8.0);
-                    if ui.button("Đã hiểu").clicked() {
+                    ui.label(RichText::new(message).size(14.0));
+                    ui.add_space(12.0);
+                    if ui.add(accent_button(p, "Đã hiểu")).clicked() || ctx.input(|i| i.key_pressed(Key::Escape)) {
                         self.modal = None;
                     }
                 });
@@ -566,19 +586,26 @@ impl eframe::App for App {
 
         if self.confirm_quit {
             egui::Window::new("Xác nhận")
+                .frame(card(p).inner_margin(Margin::same(20)))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.label("Bạn có muốn thoát không? Dữ liệu đã nhập chưa được tính.");
-                    ui.add_space(8.0);
+                    ui.label(RichText::new("Bạn có muốn thoát không? Dữ liệu đã nhập chưa được tính.").size(14.0));
+                    ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Thoát").clicked() {
+                        // Nút an toàn là nút chính; nút thoát mất dữ liệu dùng màu lỗi, đứng cách xa.
+                        if ui.add(accent_button(p, "Ở lại")).clicked() || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                            self.confirm_quit = false;
+                        }
+                        ui.add_space(16.0);
+                        let quit = egui::Button::new(RichText::new("Thoát").size(14.0).color(p.error))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::new(1.0, p.error))
+                            .min_size(egui::vec2(80.0, 34.0));
+                        if ui.add(quit).clicked() {
                             self.allow_close = true;
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                        if ui.button("Ở lại").clicked() || ctx.input(|i| i.key_pressed(Key::Escape)) {
-                            self.confirm_quit = false;
                         }
                     });
                 });
@@ -653,8 +680,21 @@ impl App {
         ui.add_space(12.0);
         self.weather_card(ui, p);
 
-        ui.add_space(12.0);
+        // Kết luận + bảng số liệu ngay dưới thời tiết: đọc được số mà không cần rê chuột vào biểu đồ.
         let data = self.compare_data();
+        if let Some(d) = &data {
+            ui.add_space(12.0);
+            let gap = 12.0;
+            let total = ui.available_width() - gap;
+            let left = (total * 0.38).max(260.0);
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                // `allocate_ui` kế thừa layout ngang của `horizontal_top`; thẻ phải xếp dọc.
+                ui.allocate_ui_with_layout(egui::vec2(left, 0.0), Layout::top_down(Align::Min), |ui| self.verdict_card(ui, p, d));
+                ui.allocate_ui_with_layout(egui::vec2(total - left, 0.0), Layout::top_down(Align::Min), |ui| self.detail_card(ui, p, d));
+            });
+        }
+        ui.add_space(12.0);
         ui.columns(2, |cols| {
             let min_h = (stored_height(cols[0].ctx(), "h_compare") - 2.0 * CARD_PAD).max(0.0);
             self.radar_card(&mut cols[0], p, min_h);
@@ -663,17 +703,6 @@ impl App {
                 store_height(cols[1].ctx(), "h_compare", h);
             }
         });
-        if let Some(d) = &data {
-            ui.add_space(12.0);
-            let gap = 12.0;
-            let total = ui.available_width() - gap;
-            let left = (total * 0.38).max(260.0);
-            ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = gap;
-                ui.allocate_ui(egui::vec2(left, 0.0), |ui| self.verdict_card(ui, p, d));
-                ui.allocate_ui(egui::vec2(total - left, 0.0), |ui| self.detail_card(ui, p, d));
-            });
-        }
 
         if enter_pressed {
             self.try_compute();
@@ -770,8 +799,9 @@ impl App {
                 } else {
                     (Some(paint::Icon::Ok), "Đã cập nhật".to_string(), p.primary)
                 };
+                let hero_h = stored_height(ui.ctx(), "h_day").max(150.0);
                 ui.horizontal_top(|ui| {
-                    ui.allocate_ui(egui::vec2(280.0, 150.0), |ui| self.weather_hero(ui, &snap));
+                    ui.allocate_ui_with_layout(egui::vec2(320.0, hero_h), Layout::top_down(Align::Min), |ui| self.weather_hero(ui, &snap));
                     ui.vertical(|ui| {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
@@ -794,13 +824,13 @@ impl App {
         let sky = view::Sky::from_description(&snap.current.description);
         let night = view::is_night(snap.current.observed_at, snap.tz_offset);
         let animate = self.config.ui.animations;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 150.0), egui::Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), ui.available_height().max(150.0)), egui::Sense::hover());
         paint::hero_background(ui.painter(), rect, sky, night, ui.input(|i| i.time), animate);
         if animate {
             ui.ctx().request_repaint_after(Duration::from_millis(33));
         }
         // Lớp tối cố định sau cụm chữ để mây/mưa động không làm giảm độ tương phản.
-        ui.painter().rect_filled(Rect::from_min_size(rect.min + egui::vec2(8.0, 8.0), egui::vec2(196.0, rect.height() - 16.0)), CornerRadius::same(10), Color32::from_black_alpha(80));
+        ui.painter().rect_filled(Rect::from_min_size(rect.min + egui::vec2(8.0, 8.0), egui::vec2(210.0, rect.height() - 16.0)), CornerRadius::same(10), Color32::from_black_alpha(80));
         let icon = paint::sky_icon(ui.ctx(), sky, night);
         let (white, soft) = (Color32::WHITE, Color32::from_rgb(0xE8, 0xED, 0xF7));
         let painter = ui.painter();
@@ -823,14 +853,19 @@ impl App {
     fn forecast_strip(&self, ui: &mut egui::Ui, p: &Palette, snap: &Snapshot, used: Source) {
         let threshold = self.config.weather.rain_alert_mm;
         let others: Vec<&Snapshot> = self.sources.iter().filter(|s| s.source != used).filter_map(|s| s.snapshot.as_ref()).collect();
+        // Mọi thẻ đều có viền 2 px (trong suốt khi không cảnh báo) và cao bằng thẻ cao nhất khung trước.
+        let ctx = ui.ctx().clone();
+        let day_h = stored_height(&ctx, "h_day");
+        let mut tallest = 0.0f32;
         ui.columns(5, |cols| {
             for (col, day) in cols.iter_mut().zip(snap.days.iter().take(5)) {
                 let other_rain: Vec<f64> = others.iter().filter_map(|o| o.days.iter().find(|d| d.date == day.date)).map(|d| d.rain_mm).collect();
                 let alert = view::rain_alert(day.rain_mm, &other_rain, threshold);
                 let base = Frame::new().fill(p.bg).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8));
-                let frame = if alert == view::RainAlert::Primary { base.stroke(Stroke::new(2.0, p.error)) } else { base };
-                frame.show(col, |ui| {
+                let frame = base.stroke(Stroke::new(2.0, if alert == view::RainAlert::Primary { p.error } else { Color32::TRANSPARENT }));
+                let shown = frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
+                    ui.set_min_height((day_h - 20.0).max(0.0));
                     ui.label(RichText::new(format!("{} · {}", view::weekday_vn(day.date), day.date.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
                     let sky = view::Sky::from_description(&day.description);
                     let icon = paint::sky_icon(ui.ctx(), sky, false);
@@ -840,7 +875,11 @@ impl App {
                     ui.label(RichText::new(format!("{}°–{}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(12.0));
                     let rain = RichText::new(format!("{} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
                     ui.label(if alert == view::RainAlert::Primary { rain.color(p.error) } else { rain.color(p.accent_text) });
-                    ui.label(RichText::new(format!("Mưa {}%", format_vn(day.pop_percent, 0))).size(12.0).color(p.muted));
+                    // `ui.columns` canh đều hai bên nên nhãn xuống dòng bị giãn chữ; ép canh trái.
+                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                        ui.label(RichText::new(format!("Khả năng mưa tối đa {}%", format_vn(day.pop_percent, 0))).size(12.0).color(p.muted))
+                            .on_hover_text("Xác suất mưa cao nhất trong các mốc 3 giờ của ngày (đặc tả mục 3)");
+                    });
                     match alert {
                         view::RainAlert::Primary => {
                             paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new("Mưa lớn"));
@@ -854,8 +893,10 @@ impl App {
                         ui.label(RichText::new("thiếu dữ liệu").size(12.0).color(p.muted));
                     }
                 });
+                tallest = tallest.max(shown.response.rect.height());
             }
         });
+        store_height(&ctx, "h_day", tallest);
     }
 
     /// Dữ liệu chung cho thẻ so sánh và thẻ chi tiết; None khi chưa có nguồn nào có dữ liệu.
@@ -911,7 +952,7 @@ impl App {
                 ui.add_space(6.0);
                 ui.label(
                     RichText::new(format!(
-                        "Mỗi cột là lượng mưa cả ngày của một nguồn (mm). Rê chuột vào một ngày để xem từng nguồn. Vạch đỏ nét đứt: ngưỡng cảnh báo {} mm.",
+                        "Mỗi cột là lượng mưa cả ngày của một nguồn (mm), có số trên đầu cột; rê chuột để xem thêm, hoặc xem bảng Số liệu chi tiết phía trên. Vạch đỏ nét đứt: ngưỡng cảnh báo {} mm.",
                         format_vn(d.threshold, 0)
                     ))
                     .size(12.0)
@@ -1158,10 +1199,15 @@ impl App {
 }
 
 fn main() -> eframe::Result {
+    // Cờ dev `--size=RộngxCao` để chụp ảnh kiểm tra ở kích thước khác (mặc định 1100×720).
+    let size = std::env::args()
+        .find_map(|a| a.strip_prefix("--size=").map(str::to_owned))
+        .and_then(|v| v.split_once('x').and_then(|(w, h)| Some([w.parse().ok()?, h.parse().ok()?])))
+        .unwrap_or([1100.0, 720.0]);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("NMTĐ Sông Bồ – Lưu lượng nước về hồ")
-            .with_inner_size([1100.0, 720.0])
+            .with_inner_size(size)
             .with_min_inner_size([900.0, 600.0]),
         ..Default::default()
     };

@@ -45,10 +45,10 @@ Mỗi bước kiểm tra: `cargo clippy --workspace -- -D warnings`, `cargo test
 - [x] B3 Hero: lớp nền tối cố định sau cụm chữ — kiểm tra: ảnh chụp, chữ rõ khi có mây/mưa
 - [x] B4 Chip cảnh báo mưa lớn trên thanh trên (mọi tab), bấm để về Tính toán — kiểm tra: ngưỡng thử hạ thấp thì chip hiện
 - [x] B5 Chữ tối thiểu 12 px — kiểm tra: `grep -n "11.0" crates/app/src` không còn cỡ chữ 11
-- [ ] B6 Bảng Số liệu chi tiết + Kết luận đặt ngay dưới thẻ thời tiết, biểu đồ/radar xuống dưới; chú thích biểu đồ không chỉ dựa vào rê chuột
-- [ ] B7 Hộp thoại theo palette (nút chính cam, nút Thoát màu lỗi, Esc đóng) và tab hiện phím tắt ngay trên nhãn
-- [ ] B8 Thẻ ngày cao bằng nhau khi hẹp; nhãn xác suất đổi thành "Khả năng mưa tối đa" (đặc tả 3: lấy `pop` lớn nhất, KHÔNG đổi công thức)
-- [ ] B9 Chụp lại 900×600 và 1100×720, sáng và tối; cập nhật MAP.md nếu có file mới
+- [x] B6 Bảng Số liệu chi tiết + Kết luận đặt ngay dưới thẻ thời tiết, biểu đồ/radar xuống dưới; chú thích biểu đồ không chỉ dựa vào rê chuột
+- [x] B7 Hộp thoại theo palette (nút chính cam, nút Thoát màu lỗi, Esc đóng) và tab hiện phím tắt ngay trên nhãn
+- [x] B8 Thẻ ngày cao bằng nhau khi hẹp; nhãn xác suất đổi thành "Khả năng mưa tối đa" (đặc tả 3: lấy `pop` lớn nhất, KHÔNG đổi công thức)
+- [x] B9 Chụp lại 900×600 và 1100×720, sáng và tối (cờ dev `--size=WxH`, `--scroll=N`; HOME tạm để thử chế độ tối và ngưỡng cảnh báo thấp mà không đụng cấu hình thật). Đã thấy bằng mắt: thanh trên + chip, tab, nhập, kết quả rỗng, thời tiết, kết luận, bảng, radar, biểu đồ. CHƯA xem: Lịch sử, Cài đặt, hộp thoại, 4K, trạng thái lỗi mạng
 
 ### Giai đoạn 5 — Đóng gói, CI
 
