@@ -50,7 +50,7 @@ pub fn rain_chart(ui: &mut egui::Ui, p: &Palette, day_labels: &[String], series:
         .x_grid_spacer(|_| (0..8).map(|i| egui_plot::GridMark { value: i as f64, step_size: 1.0 }).collect())
         .show(ui, |plot| {
             // Vùng nền nhấn cho ngày đang rê chuột; thông tin chi tiết hiện ở khung nổi bên dưới.
-            hovered = plot.pointer_coordinate().and_then(|pt| {
+            hovered = plot.pointer_coordinate().filter(|_| plot.response().hovered()).and_then(|pt| {
                 let d = pt.x.round();
                 (d >= 0.0 && (d as usize) < days && (pt.x - d).abs() <= 0.45).then_some(d as usize)
             });
