@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::aggregate::{aggregate, Slot};
 use crate::error::WeatherError;
-use crate::provider::{Current, Snapshot, WeatherProvider};
+use crate::provider::{read_json, Current, Snapshot, WeatherProvider};
 
 const BASE_URL: &str = "https://api.openweathermap.org/data/2.5";
 
@@ -110,19 +110,7 @@ impl FreeProvider {
             .query("units", "metric")
             .query("lang", "vi")
             .call();
-        // Không đưa URL (chứa key) vào lỗi: chỉ trả nguyên nhân đã phân loại.
-        match response {
-            Ok(r) => r.into_json::<T>().map_err(|e| {
-                if e.kind() == std::io::ErrorKind::InvalidData {
-                    WeatherError::BadResponse
-                } else {
-                    WeatherError::Unavailable
-                }
-            }),
-            Err(ureq::Error::Status(401, _)) => Err(WeatherError::InvalidKey),
-            Err(ureq::Error::Status(429, _)) => Err(WeatherError::RateLimited),
-            Err(_) => Err(WeatherError::Unavailable),
-        }
+        read_json(response)
     }
 }
 
@@ -165,6 +153,7 @@ impl WeatherProvider for FreeProvider {
             days: aggregate(&slots, forecast.city.timezone),
             fetched_at,
             tz_offset: forecast.city.timezone,
+            source: "OpenWeather".into(),
         })
     }
 }

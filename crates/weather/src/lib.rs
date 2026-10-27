@@ -3,8 +3,10 @@
 pub mod aggregate;
 pub mod cache;
 pub mod error;
+pub mod chain;
 pub mod free;
+pub mod openmeteo;
 pub mod provider;
 
 pub use error::WeatherError;
-pub use provider::{Current, Day, Snapshot, WeatherProvider};
+pub use provider::{Current, Day, ModelRain, Snapshot, WeatherProvider};

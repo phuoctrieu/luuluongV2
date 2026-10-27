@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// Thông báo cho người vận hành (đặc tả 5.5). Không chứa URL hay API key.
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum WeatherError {
     #[error("API key không hợp lệ. Key mới tạo có thể cần đợi vài giờ để kích hoạt.")]
     InvalidKey,

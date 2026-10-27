@@ -32,6 +32,7 @@ mod tests {
             days: vec![],
             fetched_at: 1_700_000_100,
             tz_offset: 25200,
+            source: "OpenWeather".into(),
         }
     }
 

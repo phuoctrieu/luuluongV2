@@ -43,6 +43,7 @@ pub fn aggregate(slots: &[Slot], tz_offset: i32) -> Vec<Day> {
                 description,
                 icon,
                 partial: group.len() < SLOTS_PER_DAY,
+                model_rain: Vec::new(),
             }
         })
         .collect()

@@ -15,6 +15,13 @@ pub struct Current {
     pub observed_at: i64,
 }
 
+/// Lượng mưa dự báo của một mô hình (để so sánh giữa các mô hình).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRain {
+    pub model: String,
+    pub rain_mm: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Day {
     pub date: NaiveDate,
@@ -28,6 +35,9 @@ pub struct Day {
     pub icon: String,
     /// Ngày thiếu mốc 3 giờ (thường là ngày đầu/cuối): chỉ là dữ liệu một phần.
     pub partial: bool,
+    /// Mưa theo từng mô hình (chỉ có với Open-Meteo); rỗng nếu nguồn không cung cấp.
+    #[serde(default)]
+    pub model_rain: Vec<ModelRain>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,8 +48,29 @@ pub struct Snapshot {
     pub fetched_at: i64,
     /// Độ lệch giờ địa phương so với UTC (giây).
     pub tz_offset: i32,
+    /// Tên nguồn dữ liệu để hiển thị, ví dụ "Open-Meteo · NOAA GFS".
+    #[serde(default)]
+    pub source: String,
 }
 
 pub trait WeatherProvider {
     fn fetch(&self, lat: f64, lon: f64) -> Result<Snapshot, WeatherError>;
+}
+
+/// Phân loại phản hồi HTTP thành lỗi cho người vận hành. Không đưa URL (có thể chứa key) vào lỗi.
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(
+    response: Result<ureq::Response, ureq::Error>,
+) -> Result<T, WeatherError> {
+    match response {
+        Ok(r) => r.into_json::<T>().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::InvalidData {
+                WeatherError::BadResponse
+            } else {
+                WeatherError::Unavailable
+            }
+        }),
+        Err(ureq::Error::Status(401, _)) => Err(WeatherError::InvalidKey),
+        Err(ureq::Error::Status(429, _)) => Err(WeatherError::RateLimited),
+        Err(_) => Err(WeatherError::Unavailable),
+    }
 }
