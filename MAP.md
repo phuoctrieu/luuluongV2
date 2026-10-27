@@ -1,0 +1,19 @@
+# MAP
+- `Đặc tả kỹ thuật – ... (Rust).md` — đặc tả chuẩn của dự án
+- `CLAUDE.md` — quy tắc và ngữ cảnh cho Claude
+- `MAP.md` — bản đồ file này
+- `PLAN.md` — kế hoạch, bước đang làm, quyết định đã chốt
+- `contexte/` — kiến thức dài hạn, mỗi chủ đề 1 file
+  - `contexte/thiet-ke-ui.md` — nguyên tắc UI, quan hệ đặc tả ↔ design-system
+  - `contexte/mo-hinh-tinh-toan.md` — tóm tắt công thức và ghi chú vận hành
+- `livrables/` — sản phẩm giao (bản build, tài liệu hướng dẫn)
+- `design-system/luu-luong-song-bo/MASTER.md` — design system sinh bởi ui-ux-pro-max (tham khảo)
+- `.claude/settings.json` — deny rules + hook PreToolUse
+- `.claude/hooks/block-dangerous.sh` — chặn lệnh nguy hiểm (exit 2)
+- `.env` — key dev/test (không vào Git); `.env.example` — mẫu không chứa giá trị thật
+- `.gitignore` — loại .env, target/, db, cache
+- `Cargo.toml` — workspace + profile release giảm kích thước
+- `crates/core/` — thư viện thuần `luuluong-core`: `reservoir.rs` (bảng + nội suy), `balance.rs` (cân bằng nước), `validate.rs` (số kiểu Việt), `error.rs`
+- `crates/core/assets/volume_table.csv` — bảng dung tích 125 dòng, nhúng sẵn
+- `crates/core/tests/python_parity.rs` + `tests/data/python_cases.csv` — đối chiếu 50 ca với bản Python cũ
+- `scripts/xlsx_to_csv.py` — chuyển tinhtoan.xlsx sang CSV; `scripts/gen_python_cases.py` — sinh ca đối chiếu bằng logic Python cũ

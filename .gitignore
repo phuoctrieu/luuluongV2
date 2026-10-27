@@ -1,0 +1,6 @@
+.env
+.env.local
+target/
+.DS_Store
+*.db
+weather_cache.json
