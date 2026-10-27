@@ -196,10 +196,11 @@ impl App {
         }
     }
 
-    pub(super) fn radar_card(&mut self, ui: &mut egui::Ui, p: &Palette) {
+    pub(super) fn radar_card(&mut self, ui: &mut egui::Ui, p: &Palette, min_h: f32) {
         let dark = ui.ctx().theme() == egui::Theme::Dark;
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
+            ui.set_min_height(min_h);
             ui.horizontal(|ui| {
                 title(ui, p, "Radar mưa");
                 if self.radar.loading {

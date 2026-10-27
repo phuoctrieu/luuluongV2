@@ -399,11 +399,55 @@ impl App {
     }
 }
 
+const CARD_PAD: f32 = 16.0;
+
+/// Chiều cao thẻ ở khung hình trước: để thẻ cùng hàng kéo dài bằng nhau.
+fn stored_height(ctx: &egui::Context, key: &str) -> f32 {
+    ctx.data(|d| d.get_temp::<f32>(Id::new(key))).unwrap_or(0.0)
+}
+
+fn store_height(ctx: &egui::Context, key: &str, h: f32) {
+    ctx.data_mut(|d| d.insert_temp(Id::new(key), h));
+}
+
+struct CompareData {
+    dates: Vec<chrono::NaiveDate>,
+    day_labels: Vec<String>,
+    series: Vec<view::Series>,
+    verdicts: Vec<view::Verdict>,
+    threshold: f64,
+}
+
+fn agreement_rank(l: view::Agreement) -> u8 {
+    match l {
+        view::Agreement::Heavy => 3,
+        view::Agreement::Differ => 2,
+        view::Agreement::Agree => 1,
+        view::Agreement::Single => 0,
+    }
+}
+
+fn agreement_symbol(l: view::Agreement) -> &'static str {
+    match l {
+        view::Agreement::Heavy | view::Agreement::Differ => "⚠",
+        view::Agreement::Agree => "✓",
+        view::Agreement::Single => "ℹ",
+    }
+}
+
+fn agreement_color(p: &Palette, l: view::Agreement) -> Color32 {
+    match l {
+        view::Agreement::Heavy => p.error,
+        view::Agreement::Differ => p.accent_text,
+        _ => p.primary,
+    }
+}
+
 fn card(p: &Palette) -> Frame {
     Frame::new()
         .fill(p.card)
         .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::same(16))
+        .inner_margin(Margin::same(CARD_PAD as i8))
 }
 
 fn title(ui: &mut egui::Ui, p: &Palette, text: &str) {
@@ -552,8 +596,10 @@ impl App {
         let mut enter_pressed = false;
 
         ui.columns(2, |cols| {
+            let min_h = (stored_height(cols[0].ctx(), "h_weather") - 2.0 * CARD_PAD).max(0.0);
             card(p).show(&mut cols[0], |ui| {
                 ui.set_width(ui.available_width());
+                ui.set_min_height(min_h);
                 title(ui, p, "Thông số tính toán");
                 ui.add_space(8.0);
                 for pair in REQUIRED.chunks(2) {
@@ -592,14 +638,27 @@ impl App {
                     }
                 });
             });
-            self.weather_right(&mut cols[1], p);
+            let h = self.weather_right(&mut cols[1], p);
+            store_height(cols[1].ctx(), "h_weather", h);
         });
 
         ui.add_space(12.0);
         self.result_card(ui, p);
 
         ui.add_space(12.0);
-        self.chart_card(ui, p);
+        let data = self.compare_data();
+        ui.columns(2, |cols| {
+            let min_h = (stored_height(cols[0].ctx(), "h_compare") - 2.0 * CARD_PAD).max(0.0);
+            self.radar_card(&mut cols[0], p, min_h);
+            if let Some(d) = &data {
+                let h = self.compare_card(&mut cols[1], p, d);
+                store_height(cols[1].ctx(), "h_compare", h);
+            }
+        });
+        if let Some(d) = &data {
+            ui.add_space(12.0);
+            self.detail_card(ui, p, d);
+        }
 
         if enter_pressed {
             self.try_compute();
@@ -634,63 +693,65 @@ impl App {
         }
     }
 
-    /// Cột phải: tiêu đề + làm mới, thẻ thời tiết hiện tại có hiệu ứng, 5 ngày tới.
-    fn weather_right(&mut self, ui: &mut egui::Ui, p: &Palette) {
+    /// Cột phải: một thẻ gồm tiêu đề + làm mới, thời tiết hiện tại có hiệu ứng, trạng thái dữ liệu, 5 ngày tới. Trả về chiều cao thẻ.
+    fn weather_right(&mut self, ui: &mut egui::Ui, p: &Palette) -> f32 {
         let used = self.primary_state().and_then(|s| s.snapshot.clone().map(|snap| (s.source, snap, s.stale)));
-        ui.horizontal(|ui| {
-            title(ui, p, "Thời tiết A Lưới");
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let can = !self.loading && self.scheduler.manual_allowed(unix_now());
-                let label = if self.loading { "Đang tải…" } else { "Làm mới" };
-                let ctx = ui.ctx().clone();
-                if ui.add_enabled(can, egui::Button::new(label)).on_hover_text("Ctrl/Cmd + R (tối đa 1 lần / 30 giây)").clicked() {
-                    self.refresh_manually(&ctx);
-                }
-            });
-        });
-        ui.add_space(4.0);
-        let Some((used_source, snap, stale)) = used else {
-            card(p).show(ui, |ui| {
+        card(p)
+            .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                if self.loading {
-                    ui.label(RichText::new("Đang tải thời tiết…").color(p.muted));
-                }
-                for s in &self.sources {
-                    if let Some(e) = &s.error {
-                        ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(12.0).color(p.error));
+                ui.horizontal(|ui| {
+                    title(ui, p, "Thời tiết A Lưới");
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let can = !self.loading && self.scheduler.manual_allowed(unix_now());
+                        let label = if self.loading { "Đang tải…" } else { "Làm mới" };
+                        let ctx = ui.ctx().clone();
+                        if ui.add_enabled(can, egui::Button::new(label)).on_hover_text("Ctrl/Cmd + R (tối đa 1 lần / 30 giây)").clicked() {
+                            self.refresh_manually(&ctx);
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                let Some((used_source, snap, stale)) = used else {
+                    if self.loading {
+                        ui.label(RichText::new("Đang tải thời tiết…").color(p.muted));
                     }
+                    for s in &self.sources {
+                        if let Some(e) = &s.error {
+                            ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(12.0).color(p.error));
+                        }
+                    }
+                    if !self.loading && self.sources.iter().all(|s| s.error.is_none()) {
+                        ui.label(RichText::new("Chưa có dữ liệu thời tiết.").color(p.muted));
+                    }
+                    ui.label(RichText::new("Phần tính lưu lượng vẫn dùng bình thường.").size(11.0).color(p.muted));
+                    return;
+                };
+                if used_source != self.source() {
+                    let why = self.sources.iter().find(|s| s.source == self.source()).and_then(|s| s.error.as_ref()).map(|e| format!(" ({e})")).unwrap_or_default();
+                    ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
                 }
-                if !self.loading && self.sources.iter().all(|s| s.error.is_none()) {
-                    ui.label(RichText::new("Chưa có dữ liệu thời tiết.").color(p.muted));
-                }
-                ui.label(RichText::new("Phần tính lưu lượng vẫn dùng bình thường.").size(11.0).color(p.muted));
-            });
-            return;
-        };
-        if used_source != self.source() {
-            let why = self.sources.iter().find(|s| s.source == self.source()).and_then(|s| s.error.as_ref()).map(|e| format!(" ({e})")).unwrap_or_default();
-            ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
-        }
-        self.weather_hero(ui, &snap);
-        ui.add_space(4.0);
-        let error = self.primary_state().and_then(|s| s.error.as_ref());
-        let (status, color) = if self.loading {
-            ("Đang tải…".to_string(), p.muted)
-        } else if let Some(e) = error {
-            (format!("⚠ Cập nhật thất bại ({e}), đang hiện dữ liệu cũ"), p.error)
-        } else if stale {
-            ("⚠ Dữ liệu cũ".to_string(), p.accent_text)
-        } else {
-            ("✓ Đã cập nhật".to_string(), p.primary)
-        };
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
-            ui.label(RichText::new(status).font(FontId::new(12.0, theme::semibold())).color(color));
-        });
-        ui.add_space(8.0);
-        self.radar_card(ui, p);
-        ui.add_space(8.0);
-        self.forecast_strip(ui, p, &snap, used_source);
+                self.weather_hero(ui, &snap);
+                ui.add_space(4.0);
+                let error = self.primary_state().and_then(|s| s.error.as_ref());
+                let (status, color) = if self.loading {
+                    ("Đang tải…".to_string(), p.muted)
+                } else if let Some(e) = error {
+                    (format!("⚠ Cập nhật thất bại ({e}), đang hiện dữ liệu cũ"), p.error)
+                } else if stale {
+                    ("⚠ Dữ liệu cũ".to_string(), p.accent_text)
+                } else {
+                    ("✓ Đã cập nhật".to_string(), p.primary)
+                };
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
+                    ui.label(RichText::new(status).font(FontId::new(12.0, theme::semibold())).color(color));
+                });
+                ui.add_space(8.0);
+                self.forecast_strip(ui, p, &snap, used_source);
+            })
+            .response
+            .rect
+            .height()
     }
 
     /// Thẻ thời tiết hiện tại: nền theo trời (nắng, mây, mưa, dông, sương, đêm) có hiệu ứng động.
@@ -725,7 +786,7 @@ impl App {
             for (col, day) in cols.iter_mut().zip(snap.days.iter().take(5)) {
                 let other_rain: Vec<f64> = others.iter().filter_map(|o| o.days.iter().find(|d| d.date == day.date)).map(|d| d.rain_mm).collect();
                 let alert = view::rain_alert(day.rain_mm, &other_rain, threshold);
-                let base = Frame::new().fill(p.card).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8));
+                let base = Frame::new().fill(p.bg).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8));
                 let frame = if alert == view::RainAlert::Primary { base.stroke(Stroke::new(2.0, p.error)) } else { base };
                 frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
@@ -752,16 +813,16 @@ impl App {
         });
     }
 
-    /// So sánh dự báo mưa giữa các nguồn: kết luận bằng lời, biểu đồ cột, rồi mới đến số liệu chi tiết.
-    fn chart_card(&self, ui: &mut egui::Ui, p: &Palette) {
-        let Some(used) = self.primary_state().and_then(|s| s.snapshot.as_ref()) else { return };
+    /// Dữ liệu chung cho thẻ so sánh và thẻ chi tiết; None khi chưa có nguồn nào có dữ liệu.
+    fn compare_data(&self) -> Option<CompareData> {
+        let used = self.primary_state().and_then(|s| s.snapshot.as_ref())?;
         let threshold = self.config.weather.rain_alert_mm;
         let dates: Vec<chrono::NaiveDate> = used.days.iter().take(5).map(|d| d.date).collect();
         let with_data: Vec<(&str, &[luuluong_weather::Day])> =
             self.sources.iter().filter_map(|s| Some((s.source.short_label(), s.snapshot.as_ref()?.days.as_slice()))).collect();
         let series = view::rain_series(&dates, &with_data);
-        let day_labels: Vec<String> = dates.iter().map(|d| format!("{} {}", view::weekday_vn(*d), d.format("%d/%m"))).collect();
-        let verdicts: Vec<view::Verdict> = dates
+        let day_labels = dates.iter().map(|d| format!("{} {}", view::weekday_vn(*d), d.format("%d/%m"))).collect();
+        let verdicts = dates
             .iter()
             .enumerate()
             .map(|(i, d)| {
@@ -769,73 +830,75 @@ impl App {
                 view::verdict(&d.format("%d/%m").to_string(), &rains, threshold)
             })
             .collect();
-        let rank = |l: view::Agreement| match l {
-            view::Agreement::Heavy => 3,
-            view::Agreement::Differ => 2,
-            view::Agreement::Agree => 1,
-            view::Agreement::Single => 0,
-        };
-        let symbol = |l: view::Agreement| match l {
-            view::Agreement::Heavy | view::Agreement::Differ => "⚠",
-            view::Agreement::Agree => "✓",
-            view::Agreement::Single => "ℹ",
-        };
-        let color = |l: view::Agreement| match l {
-            view::Agreement::Heavy => p.error,
-            view::Agreement::Differ => p.accent_text,
-            _ => p.primary,
-        };
+        Some(CompareData { dates, day_labels, series, verdicts, threshold })
+    }
+
+    /// So sánh dự báo mưa giữa các nguồn: cảnh báo, rồi biểu đồ cột. Trả về chiều cao thẻ.
+    fn compare_card(&self, ui: &mut egui::Ui, p: &Palette, d: &CompareData) -> f32 {
+        card(p)
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                title(ui, p, "So sánh dự báo mưa giữa các nguồn");
+                ui.add_space(6.0);
+                let top = d.verdicts.iter().rev().max_by_key(|v| agreement_rank(v.level));
+                let (heading, body) = match top {
+                    Some(v) if v.level != view::Agreement::Single => (
+                        match v.level {
+                            view::Agreement::Heavy => "CẢNH BÁO: CÓ NGUỒN BÁO MƯA LỚN",
+                            view::Agreement::Differ => "BẤT ĐỒNG LỚN GIỮA CÁC NGUỒN",
+                            _ => "BÌNH THƯỜNG: CÁC NGUỒN TƯƠNG ĐỐI ĐỒNG THUẬN",
+                        },
+                        Some(v),
+                    ),
+                    _ => ("CHƯA ĐỦ DỮ LIỆU ĐÁNH GIÁ", None),
+                };
+                let level = body.map_or(view::Agreement::Single, |v| v.level);
+                let tint = agreement_color(p, level);
+                let callout = Frame::new().inner_margin(Margin { left: 14, right: 0, top: 2, bottom: 2 }).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(RichText::new(format!("{} {heading}", agreement_symbol(level))).font(FontId::new(12.0, theme::semibold())).color(tint));
+                    if let Some(v) = body {
+                        ui.label(RichText::new(&v.text).font(FontId::new(15.0, theme::semibold())).color(p.text));
+                    }
+                });
+                let r = callout.response.rect;
+                ui.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(4.0, r.height())), CornerRadius::same(2), tint);
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(format!(
+                        "Mỗi cột là lượng mưa cả ngày của một nguồn (mm). Rê chuột vào một ngày để xem từng nguồn. Vạch đỏ nét đứt: ngưỡng cảnh báo {} mm.",
+                        format_vn(d.threshold, 0)
+                    ))
+                    .size(11.0)
+                    .color(p.muted),
+                );
+                ui.add_space(6.0);
+                let notes: Vec<String> = d.verdicts.iter().map(|v| v.text.clone()).collect();
+                chart::rain_chart(ui, p, &d.day_labels, &d.series, &notes, d.threshold, 230.0);
+                for s in &self.sources {
+                    if let Some(e) = &s.error {
+                        ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(11.0).color(p.error));
+                    }
+                }
+            })
+            .response
+            .rect
+            .height()
+    }
+
+    /// Kết luận từng ngày và bảng số liệu chi tiết, toàn chiều rộng, thu gọn được.
+    fn detail_card(&self, ui: &mut egui::Ui, p: &Palette, d: &CompareData) {
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            title(ui, p, "So sánh dự báo mưa giữa các nguồn");
-            ui.add_space(6.0);
-            let top = verdicts.iter().rev().max_by_key(|v| rank(v.level));
-            let (heading, body) = match top {
-                Some(v) if v.level != view::Agreement::Single => (
-                    match v.level {
-                        view::Agreement::Heavy => "CẢNH BÁO: CÓ NGUỒN BÁO MƯA LỚN",
-                        view::Agreement::Differ => "BẤT ĐỒNG LỚN GIỮA CÁC NGUỒN",
-                        _ => "BÌNH THƯỜNG: CÁC NGUỒN TƯƠNG ĐỐI ĐỒNG THUẬN",
-                    },
-                    Some(v),
-                ),
-                _ => ("CHƯA ĐỦ DỮ LIỆU ĐÁNH GIÁ", None),
-            };
-            let level = body.map_or(view::Agreement::Single, |v| v.level);
-            let tint = color(level);
-            let callout = Frame::new().inner_margin(Margin { left: 14, right: 0, top: 2, bottom: 2 }).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.label(RichText::new(format!("{} {heading}", symbol(level))).font(FontId::new(12.0, theme::semibold())).color(tint));
-                if let Some(v) = body {
-                    ui.label(RichText::new(&v.text).font(FontId::new(16.0, theme::semibold())).color(p.text));
-                }
-            });
-            let r = callout.response.rect;
-            ui.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(4.0, r.height())), CornerRadius::same(2), tint);
-            ui.add_space(6.0);
-            ui.label(
-                RichText::new(format!(
-                    "Mỗi cột là lượng mưa dự kiến cả ngày của một nguồn (số trên đầu cột, đơn vị mm). Vạch đỏ nét đứt là ngưỡng cảnh báo mưa lớn ({} mm).",
-                    format_vn(threshold, 0)
-                ))
-                .size(11.0)
-                .color(p.muted),
-            );
-            ui.add_space(6.0);
-            chart::rain_chart(ui, p, &day_labels, &series, threshold, 230.0);
-            for s in &self.sources {
-                if let Some(e) = &s.error {
-                    ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(11.0).color(p.error));
-                }
-            }
-            ui.add_space(6.0);
+            title(ui, p, "Kết luận và số liệu chi tiết theo ngày");
+            ui.add_space(4.0);
             egui::CollapsingHeader::new(RichText::new("Kết luận từng ngày").font(FontId::new(13.0, theme::semibold())).color(p.primary)).default_open(true).show(ui, |ui| {
-                for v in &verdicts {
-                    ui.label(RichText::new(format!("{} {}", symbol(v.level), v.text)).size(12.0).color(color(v.level)));
+                for v in &d.verdicts {
+                    ui.label(RichText::new(format!("{} {}", agreement_symbol(v.level), v.text)).size(13.0).color(agreement_color(p, v.level)));
                 }
             });
             egui::CollapsingHeader::new(RichText::new("Bảng số liệu chi tiết").font(FontId::new(13.0, theme::semibold())).color(p.primary)).default_open(true).show(ui, |ui| {
-                self.comparison_table(ui, p, &dates);
+                self.comparison_table(ui, p, &d.dates);
             });
         });
     }
