@@ -20,6 +20,11 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [ ] Cổng giai đoạn 3: chạy ổn định 3 ngày liên tục, kể cả ngắt mạng — chưa làm
 - [ ] Biểu tượng thời tiết (hiện chỉ có chữ mô tả); ngưỡng mưa chỉnh trong Cài đặt (giai đoạn 4)
 ### Giai đoạn 4 — Lịch sử, CSV, Cài đặt
+- [x] Nguồn thời tiết: Open-Meteo (best_match, NOAA GFS, ECMWF, DWD ICON) cạnh OpenWeather; mưa theo từng mô hình hiện trên thẻ ngày; cảnh báo khi một mô hình báo ≥ ngưỡng; nguồn dự phòng tự động; đã gọi API Open-Meteo thật (test `--ignored live`)
+- [x] Crate `luuluong-storage`: config.toml, lịch sử SQLite, xuất CSV (UTF-8 BOM, `;`, thập phân `,`), API key trong Keychain, nạp bảng CSV/XLSX (đã thử với `tinhtoan.xlsx` cũ)
+- [x] App: màn hình Lịch sử (lọc ngày, xóa có xác nhận, xuất CSV) và Cài đặt (tổ máy, nguồn, tọa độ, key, giao diện, bảng dung tích, mở thư mục dữ liệu); tự lưu lịch sử mỗi lần tính; 107 test pass
+- [ ] CHƯA nhìn thấy bằng mắt màn hình Lịch sử và Cài đặt (chỉ có test logic + build); cần chạy `cargo run -p app` và thử từng thẻ (cờ dev `--tab=history|settings`)
+- [ ] Chưa thử lưu/đọc API key thật trong Keychain; chưa thử nạp bảng ngoài trên giao diện
 ### Giai đoạn 5 — Đóng gói, CI
 
 ## Đang làm
@@ -35,6 +40,9 @@ Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn h
 - Bản Python cũ nằm ở `../luuluong/` (giaodien.py, tinhtoan.xlsx). Bản cũ có 2 lỗi đã biết: bỏ dòng 165 m, và trả 0 khi mực nước đầu = cuối; ca đối chiếu loại các trường hợp này.
 
 - eframe/egui 0.32.3 (không phải 0.37): máy đang dùng Rust 1.87, bản 0.37 cần 1.95. `rust-version = "1.87"` + resolver 3 để Cargo tự chọn bản tương thích. Nâng Rust rồi nâng eframe sau nếu muốn.
+- NOAA/NWS (`api.weather.gov`) trả 404 cho A Lưới (đã thử 2026-10-27) nên không dùng; NOAA GFS lấy qua Open-Meteo `gfs_seamless`. Các mô hình bất đồng lớn: dự báo mưa 28/10 là 6,0 (GFS) / 12,1 (ICON) / 40,9 (best_match) / 44,5 mm (ECMWF).
+- Nguồn mặc định `open-meteo:best_match` (không cần key). Open-Meteo miễn phí cho phi thương mại: cần xác nhận nhà máy có thuộc diện này không.
+- CSV dùng `;` và thập phân `,` để Excel tiếng Việt mở đúng; lịch sử có thêm cột `operator` (đặc tả F6 yêu cầu "người nhập").
 - Font Be Vietnam Pro không bật được số đều (tabular) trong egui; chữ số kết quả có thể lệch nhẹ.
 
 ## Việc cần chốt ở giai đoạn 2 (đã chốt: cam đậm `#B84A00` cho số kết quả giao diện sáng, 5,23:1)

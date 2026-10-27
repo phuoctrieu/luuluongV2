@@ -79,6 +79,7 @@ dependencies = [
  "directories",
  "eframe",
  "luuluong-core",
+ "luuluong-storage",
  "luuluong-weather",
 ]
 

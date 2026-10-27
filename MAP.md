@@ -21,3 +21,6 @@
 - `crates/app/assets/BeVietnamPro-*.ttf` — font nhúng (SIL OFL)
 - `crates/weather/` — thư viện `luuluong-weather`: `aggregate.rs` (gộp ngày), `cache.rs`, `free.rs` (OpenWeather miễn phí), `provider.rs` (trait + kiểu dữ liệu), `error.rs`
 - `crates/app/src/schedule.rs` — lịch làm mới thời tiết; `src/view.rs` — định dạng hiển thị thời tiết
+- `crates/weather/src/openmeteo.rs` (Open-Meteo nhiều mô hình), `chain.rs` (nguồn dự phòng), `source.rs` (nguồn lưu trong config)
+- `crates/storage/` — `luuluong-storage`: `config.rs`, `history.rs` (SQLite), `csv_export.rs`, `secret.rs` (Keychain), `table_loader.rs` (CSV/XLSX); `tests/data/tinhtoan.xlsx` là bảng của bản cũ để đối chiếu
+- `crates/app/src/settings.rs` — kiểm tra biểu mẫu Cài đặt; `history_screen.rs`, `settings_screen.rs` — hai màn hình mới

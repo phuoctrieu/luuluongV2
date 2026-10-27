@@ -6,28 +6,61 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use app::form::{validate, Field, Form};
 use app::schedule::Scheduler;
+use app::settings::{SettingsError, SettingsForm};
 use app::theme::{self, Palette};
 use app::view;
 use eframe::egui::{self, Align, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Margin, Modifiers, RichText, Stroke};
 use luuluong_core::validate::format_vn;
 use luuluong_core::{compute, CalcError, Outputs, Turbine, VolumeTable};
+use luuluong_storage::config::Config;
+use luuluong_storage::history::{vn_timestamp, History, Record};
+use luuluong_storage::secret::{KeyringStore, SecretStore};
+use luuluong_storage::table_loader::load_volume_table;
+use luuluong_weather::chain::{fetch_chain, Fetched};
 use luuluong_weather::free::FreeProvider;
-use luuluong_weather::{cache, Snapshot, WeatherError, WeatherProvider};
+use luuluong_weather::openmeteo::{Model, OpenMeteoProvider};
+use luuluong_weather::{cache, Snapshot, Source, WeatherError, WeatherProvider};
+
+mod history_screen;
+mod settings_screen;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-/// Xấp xỉ A Lưới; cần chỉnh theo vị trí nhà máy (đặc tả 10.4).
-const LAT: f64 = 16.22;
-const LON: f64 = 107.25;
-const REFRESH_MINUTES: u32 = 60;
 
-type WeatherResult = Result<Snapshot, WeatherError>;
+type WeatherResult = Result<Fetched, WeatherError>;
 
 fn unix_now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
-fn cache_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("vn", "songbo", "luuluong").map(|d| d.cache_dir().join("weather_cache.json"))
+fn project_dirs() -> Option<directories::ProjectDirs> {
+    directories::ProjectDirs::from("vn", "songbo", "luuluong")
+}
+
+fn make_provider(source: Source, key: &str) -> Box<dyn WeatherProvider + Send> {
+    match source {
+        Source::OpenWeather => Box::new(FreeProvider::new(key)),
+        Source::OpenMeteo(model) => Box::new(OpenMeteoProvider::new(model)),
+    }
+}
+
+fn apply_theme(ctx: &egui::Context, theme: &str) {
+    ctx.set_theme(match theme {
+        "light" => egui::ThemePreference::Light,
+        "dark" => egui::ThemePreference::Dark,
+        _ => egui::ThemePreference::System,
+    });
+}
+
+/// Mở thư mục bằng trình quản lý file của hệ điều hành.
+fn open_folder(path: &std::path::Path) {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    let _ = std::process::Command::new(program).arg(path).spawn();
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -60,21 +93,79 @@ struct App {
     rx: Receiver<WeatherResult>,
     api_key: String,
     cache_path: Option<PathBuf>,
+    config: Config,
+    config_path: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
+    secrets: Option<KeyringStore>,
+    /// Hộp thoại thông báo (lỗi bảng dung tích, cấu hình hỏng…).
+    modal: Option<String>,
+    weather_warning: Option<String>,
+    history: Option<History>,
+    history_rows: Vec<Record>,
+    history_filter: String,
+    history_dirty: bool,
+    history_confirm_delete: Option<i64>,
+    /// Lỗi ghi/đọc lịch sử: chỉ cảnh báo nhỏ, không chặn kết quả.
+    storage_warning: Option<String>,
+    export_notice: Option<String>,
+    settings: SettingsForm,
+    settings_errors: Vec<SettingsError>,
+    settings_notice: Option<String>,
+    key_input: String,
+    table_path_input: String,
+    table_notice: Option<String>,
 }
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::install(&cc.egui_ctx);
         let (tx, rx) = channel();
-        let cache_path = cache_path();
+        let dirs = project_dirs();
+        let cache_path = dirs.as_ref().map(|d| d.cache_dir().join("weather_cache.json"));
+        let config_path = dirs.as_ref().map(|d| d.config_dir().join("config.toml"));
+        let data_dir = dirs.as_ref().map(|d| d.data_dir().to_path_buf());
+        let mut modal = None;
+        let config = match config_path.as_deref().map(Config::load) {
+            Some(Ok(c)) => c,
+            Some(Err(e)) => {
+                modal = Some(e.to_string());
+                Config::default()
+            }
+            None => Config::default(),
+        };
+        let mut table = VolumeTable::builtin();
+        if config.reservoir.volume_table != "builtin" {
+            match load_volume_table(std::path::Path::new(&config.reservoir.volume_table)) {
+                Ok(t) => table = t,
+                Err(e) => modal = Some(format!("{e}\nĐang dùng bảng dung tích nhúng sẵn.")),
+            }
+        }
+        let mut storage_warning = None;
+        let history = data_dir.as_ref().and_then(|d| {
+            std::fs::create_dir_all(d).ok()?;
+            History::open(&d.join("history.db")).map_err(|e| storage_warning = Some(e.to_string())).ok()
+        });
+        let secrets = KeyringStore::new("luuluong", "openweather-api-key").ok();
+        // Key trong Keychain/Credential Manager; biến môi trường chỉ để dev/test.
+        let api_key = secrets
+            .as_ref()
+            .and_then(|s| s.get())
+            .or_else(|| std::env::var("OPENWEATHER_API_KEY").ok())
+            .unwrap_or_default();
+        apply_theme(&cc.egui_ctx, &config.ui.theme);
         let snapshot = cache_path.as_deref().and_then(cache::load);
+        let tab = match std::env::args().find_map(|a| a.strip_prefix("--tab=").map(str::to_owned)).as_deref() {
+            Some("history") => Tab::History,
+            Some("settings") => Tab::Settings,
+            _ => Tab::Calc,
+        };
         Self {
-            table: VolumeTable::builtin(),
-            turbine: Turbine::default(),
+            table,
+            turbine: Turbine { q_h1: config.turbine.q_h1, q_h2: config.turbine.q_h2 },
             form: Form::default(),
             result: None,
             submitted: false,
-            tab: Tab::Calc,
+            tab,
             show_spill: false,
             confirm_quit: false,
             allow_close: false,
@@ -83,21 +174,57 @@ impl App {
             snapshot,
             weather_error: None,
             loading: false,
-            scheduler: Scheduler::new(REFRESH_MINUTES),
+            scheduler: Scheduler::new(config.weather.refresh_minutes),
             tx,
             rx,
-            // Tạm thời đọc từ biến môi trường; giai đoạn 4 chuyển sang Keychain/Credential Manager.
-            api_key: std::env::var("OPENWEATHER_API_KEY").unwrap_or_default(),
+            api_key,
             cache_path,
+            settings: SettingsForm::from_config(&config),
+            table_path_input: if config.reservoir.volume_table == "builtin" { String::new() } else { config.reservoir.volume_table.clone() },
+            config,
+            config_path,
+            data_dir,
+            secrets,
+            modal,
+            weather_warning: None,
+            history,
+            history_rows: Vec::new(),
+            history_filter: String::new(),
+            history_dirty: true,
+            history_confirm_delete: None,
+            storage_warning,
+            export_notice: None,
+            settings_errors: Vec::new(),
+            settings_notice: None,
+            key_input: String::new(),
+            table_notice: None,
         }
     }
 
+    fn source(&self) -> Source {
+        Source::from_id(&self.config.weather.source).unwrap_or(Source::OpenMeteo(Model::BestMatch))
+    }
+
+    /// Nguồn chính do người dùng chọn; nguồn dự phòng khác dịch vụ để không cùng lỗi một lúc.
     fn start_fetch(&mut self, ctx: &egui::Context) {
         self.loading = true;
         self.scheduler.mark_attempt(unix_now());
-        let (tx, key, ctx) = (self.tx.clone(), self.api_key.clone(), ctx.clone());
+        let source = self.source();
+        let key = self.api_key.clone();
+        let fallback = match source {
+            Source::OpenWeather => Some(make_provider(Source::OpenMeteo(Model::BestMatch), &key)),
+            Source::OpenMeteo(_) if !key.trim().is_empty() => Some(make_provider(Source::OpenWeather, &key)),
+            Source::OpenMeteo(_) => None,
+        };
+        let primary = make_provider(source, &key);
+        let (lat, lon) = (self.config.weather.lat, self.config.weather.lon);
+        let (tx, ctx) = (self.tx.clone(), ctx.clone());
         std::thread::spawn(move || {
-            let _ = tx.send(FreeProvider::new(key).fetch(LAT, LON));
+            let mut chain: Vec<&dyn WeatherProvider> = vec![primary.as_ref()];
+            if let Some(f) = &fallback {
+                chain.push(f.as_ref());
+            }
+            let _ = tx.send(fetch_chain(&chain, lat, lon));
             ctx.request_repaint();
         });
     }
@@ -107,7 +234,9 @@ impl App {
             let now = unix_now();
             self.loading = false;
             match result {
-                Ok(snapshot) => {
+                Ok(Fetched { snapshot, primary_error }) => {
+                    self.weather_warning = primary_error
+                        .map(|e| format!("Nguồn đã chọn lỗi ({e}) Đang dùng nguồn dự phòng: {}.", snapshot.source));
                     if let Some(path) = &self.cache_path {
                         if let Err(e) = cache::save(path, &snapshot) {
                             eprintln!("không ghi được cache thời tiết: {e}");
@@ -120,6 +249,7 @@ impl App {
                 }
                 Err(e) => {
                     self.scheduler.record_err(now, &e);
+                    self.weather_warning = None;
                     self.stale = true;
                     self.weather_error = Some(e);
                 }
@@ -137,6 +267,11 @@ impl App {
         }
     }
 
+    fn save_config(&mut self) -> Result<(), String> {
+        let path = self.config_path.as_ref().ok_or("Không xác định được thư mục cấu hình.")?;
+        self.config.save(path).map_err(|e| e.to_string())
+    }
+
     fn field_id(f: Field) -> Id {
         Id::new(("field", f as usize))
     }
@@ -147,6 +282,31 @@ impl App {
         match validate(&self.form, &self.table) {
             Ok(inputs) => {
                 self.result = compute(&self.table, &self.turbine, &inputs).ok();
+                if let (Some(o), Some(h)) = (&self.result, &self.history) {
+                    let record = Record {
+                        id: 0,
+                        created_at: vn_timestamp(unix_now()),
+                        z_start: inputs.z_start,
+                        z_end: inputs.z_end,
+                        hours: inputs.hours,
+                        h1: inputs.h1,
+                        h2: inputs.h2,
+                        spill_q: inputs.spill_q,
+                        spill_h: inputs.spill_h,
+                        eco_q: inputs.eco_q,
+                        q_in: o.q_in,
+                        w_in: o.w_in,
+                        operator: self.config.ui.operator.clone(),
+                        note: String::new(),
+                    };
+                    match h.insert(&record) {
+                        Ok(_) => {
+                            self.history_dirty = true;
+                            self.storage_warning = None;
+                        }
+                        Err(e) => self.storage_warning = Some(e.to_string()),
+                    }
+                }
             }
             Err(errors) => {
                 self.result = None;
@@ -271,7 +431,11 @@ impl eframe::App for App {
                             .stroke(Stroke::new(1.0, p.header_muted))
                             .min_size(egui::vec2(0.0, 32.0));
                         if ui.add(toggle).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                            ctx.set_theme(if dark { egui::Theme::Light } else { egui::Theme::Dark });
+                            let next = if dark { "light" } else { "dark" };
+                            apply_theme(ctx, next);
+                            self.config.ui.theme = next.into();
+                            self.settings.theme = next.into();
+                            let _ = self.save_config();
                         }
                     });
                 });
@@ -291,10 +455,25 @@ impl eframe::App for App {
         egui::CentralPanel::default().frame(Frame::new().fill(p.bg).inner_margin(Margin::same(16))).show(ctx, |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match self.tab {
                 Tab::Calc => self.calc_screen(ui, p),
-                Tab::History => placeholder(ui, p, "Lịch sử tính toán", "Sẽ có ở giai đoạn 4: tự lưu mỗi lần tính, lọc theo ngày, xuất CSV."),
-                Tab::Settings => placeholder(ui, p, "Cài đặt", "Sẽ có ở giai đoạn 4: lưu lượng tổ máy, API key, giao diện, bảng dung tích."),
+                Tab::History => self.history_screen(ui, p),
+                Tab::Settings => self.settings_screen(ui, p),
             });
         });
+
+        if let Some(message) = self.modal.clone() {
+            egui::Window::new("Thông báo")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.set_max_width(420.0);
+                    ui.label(message);
+                    ui.add_space(8.0);
+                    if ui.button("Đã hiểu").clicked() {
+                        self.modal = None;
+                    }
+                });
+        }
 
         if self.confirm_quit {
             egui::Window::new("Xác nhận")
@@ -316,14 +495,6 @@ impl eframe::App for App {
                 });
         }
     }
-}
-
-fn placeholder(ui: &mut egui::Ui, p: &Palette, name: &str, note: &str) {
-    card(p).show(ui, |ui| {
-        title(ui, p, name);
-        ui.add_space(8.0);
-        ui.label(RichText::new(note).color(p.muted));
-    });
 }
 
 impl App {
@@ -397,7 +568,8 @@ impl App {
         ui.horizontal(|ui| {
             title(ui, p, "Thời tiết A Lưới");
             if let Some(s) = &self.snapshot {
-                ui.label(RichText::new(view::updated_label(s.fetched_at, s.tz_offset, self.stale)).size(11.0).color(p.muted));
+                let label = format!("{} · {}", s.source, view::updated_label(s.fetched_at, s.tz_offset, self.stale));
+                ui.label(RichText::new(label).size(11.0).color(p.muted));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let can = !self.loading && self.scheduler.manual_allowed(unix_now());
@@ -410,6 +582,9 @@ impl App {
         });
         if let Some(e) = &self.weather_error {
             ui.label(RichText::new(format!("⚠ {e}")).size(12.0).color(p.error));
+        }
+        if let Some(w) = &self.weather_warning {
+            ui.label(RichText::new(format!("⚠ {w}")).size(12.0).color(p.error));
         }
         ui.add_space(4.0);
         let Some(s) = self.snapshot.clone() else {
@@ -435,8 +610,8 @@ impl App {
                 ui.label(RichText::new(format!("Ẩm {}% · Gió {} m/s", format_vn(s.current.humidity, 0), format_vn(s.current.wind_speed, 1))).size(11.0).color(p.muted));
             });
             for (col, day) in cols[1..].iter_mut().zip(s.days.iter().take(5)) {
-                let alert = day.rain_mm >= view::RAIN_ALERT_MM;
-                let frame = if alert { card(p).stroke(Stroke::new(2.0, p.error)) } else { card(p) };
+                let alert = view::rain_alert(day, self.config.weather.rain_alert_mm);
+                let frame = if alert == view::RainAlert::Primary { card(p).stroke(Stroke::new(2.0, p.error)) } else { card(p) };
                 frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
                     let head = format!("{} · {}", view::weekday_vn(day.date), day.date.format("%d/%m"));
@@ -444,10 +619,19 @@ impl App {
                     ui.label(RichText::new(&day.description).size(12.0));
                     ui.label(RichText::new(format!("{}° / {}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(14.0));
                     let rain = RichText::new(format!("Mưa {} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
-                    ui.label(if alert { rain.color(p.error) } else { rain.color(p.accent_text) });
+                    ui.label(if alert == view::RainAlert::Primary { rain.color(p.error) } else { rain.color(p.accent_text) });
                     ui.label(RichText::new(format!("Xác suất {}%", format_vn(day.pop_percent, 0))).size(11.0).color(p.muted));
-                    if alert {
-                        ui.label(RichText::new("⚠ Mưa lớn").size(11.0).color(p.error));
+                    for r in &day.model_rain {
+                        ui.label(RichText::new(format!("{} {} mm", r.model, format_vn(r.rain_mm, 1))).size(11.0).color(p.muted));
+                    }
+                    match alert {
+                        view::RainAlert::Primary => {
+                            ui.label(RichText::new("⚠ Mưa lớn").size(11.0).color(p.error));
+                        }
+                        view::RainAlert::OtherModels => {
+                            ui.label(RichText::new("⚠ Có mô hình báo mưa lớn").size(11.0).color(p.error));
+                        }
+                        view::RainAlert::None => {}
                     }
                     if day.partial {
                         ui.label(RichText::new("dữ liệu một phần").size(11.0).color(p.muted));
@@ -535,6 +719,10 @@ impl App {
                     format_vn(o.q_in, 2),
                     format_vn(o.w_in, 2)
                 ));
+            }
+            if let Some(w) = &self.storage_warning {
+                ui.add_space(6.0);
+                ui.label(RichText::new(format!("⚠ {w} Kết quả vẫn đúng.")).size(11.0).color(p.error));
             }
             ui.add_space(8.0);
             ui.label(
