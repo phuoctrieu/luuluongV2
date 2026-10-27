@@ -592,10 +592,11 @@ impl App {
                     }
                 });
             });
-            cols[0].add_space(12.0);
-            self.result_card(&mut cols[0], p);
             self.weather_right(&mut cols[1], p);
         });
+
+        ui.add_space(12.0);
+        self.result_card(ui, p);
 
         ui.add_space(12.0);
         self.chart_card(ui, p);
