@@ -57,6 +57,11 @@ Mỗi bước kiểm tra: `cargo clippy --workspace -- -D warnings`, `cargo test
 - [ ] Còn chưa xem bằng mắt: màn hình Lịch sử, hộp thoại, 4K, mất mạng, thẻ kết quả sau khi tính (nút Sao chép, thời điểm tính)
 
 ### Giai đoạn 5 — Đóng gói, CI
+Theo đặc tả mục 9. Phiên bản lấy từ `Cargo.toml` (0.1.0). Kiểm tra mỗi bước ghi kèm.
+- [x] D1 macOS: `livrables/luuluong-0.1.0-macos-universal.dmg` (8,0 MB). Đã kiểm: `lipo` có x86_64 + arm64, `codesign --verify` hợp lệ (ad-hoc), `minos 11.0` cả hai, mở `.app` từ bản đóng gói chạy và hiện dữ liệu thật. Đo: RSS 142 MB sau 9 giây (mục tiêu đặc tả ≤ 100 MB — LỆCH, cần xem lại); thời gian khởi động chưa đo chính xác. Chưa thử trên máy Intel thật. Chưa có biểu tượng riêng (icon cũ 128×85 không dùng được, chờ quyết định)
+- [ ] D2 Windows: đã viết `.github/workflows/release.yml` (YAML hợp lệ) và `scripts/build_windows.ps1` nhưng CHƯA chạy lần nào — máy Mac không build được `.exe`, repo chưa có remote GitHub. Cần: kho GitHub riêng tư + gắn thẻ `v0.1.0`, hoặc một máy Windows chạy script. Chưa gắn biểu tượng vào `.exe` (cần `winresource`, ngoài mục 7.1 — hỏi trước)
+- [x] D3 Trang hướng dẫn mở lần đầu: `livrables/HUONG-DAN-MO-LAN-DAU.md`
+
 
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.

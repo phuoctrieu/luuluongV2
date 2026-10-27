@@ -4,3 +4,7 @@ target/
 .DS_Store
 *.db
 weather_cache.json
+livrables/*.dmg
+livrables/*.zip
+livrables/*.app/
+livrables/stage*/

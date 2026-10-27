@@ -27,3 +27,7 @@
 - `crates/weather/src/radar.rs` — radar mưa: khung RainViewer, tile OSM (cache đĩa), toán tile, giải mã PNG
 - `crates/app/src/paint.rs` — biểu tượng + hiệu ứng thời tiết vẽ bằng code; `chart.rs` — biểu đồ cột so sánh nguồn; `radar_screen.rs` — thẻ radar mưa
 - `crates/app/assets/weather/` — biểu tượng thời tiết PNG 128 px (Meteocons của Bas Milius, MIT; kèm `LICENSE-meteocons.txt`), nhúng bằng `paint::sky_icon`
+- `scripts/package_macos.sh` — đóng `.app` universal (ký tạm) trong `.dmg` vào `livrables/` (sau khi build 2 target); `scripts/build_windows.ps1` — build + nén `.zip` trên máy Windows
+- `.github/workflows/release.yml` — CI macOS + Windows khi gắn thẻ `v*` (chưa chạy lần nào, chưa có remote)
+- `livrables/HUONG-DAN-MO-LAN-DAU.md` — trang hướng dẫn cài và mở lần đầu cho bản chưa ký số; file `.dmg`/`.zip` sinh ra ở đây không đưa vào Git
+

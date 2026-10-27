@@ -1,0 +1,56 @@
+# Build hai nền tảng khi gắn thẻ phiên bản (v0.1.0...) hoặc chạy tay. Đặc tả mục 9.2.
+# Chưa ký số: không có secrets nào được dùng.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          components: clippy
+      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --locked -- -D warnings
+      - run: cargo build --release --locked -p app --target aarch64-apple-darwin
+      - run: cargo build --release --locked -p app --target x86_64-apple-darwin
+      - run: ./scripts/package_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: livrables/*.dmg
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: livrables/*.dmg
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --locked -- -D warnings
+      - run: ./scripts/build_windows.ps1
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: livrables/*.zip
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: livrables/*.zip
