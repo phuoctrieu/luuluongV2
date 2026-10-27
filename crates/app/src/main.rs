@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use app::chart;
 use app::form::{validate, Field, Form};
+use app::paint;
 use app::schedule::Scheduler;
 use app::settings::{SettingsError, SettingsForm};
 use app::theme::{self, Palette};
@@ -570,11 +572,13 @@ impl App {
                     }
                 });
             });
-            self.result_card(&mut cols[1], p);
+            cols[0].add_space(12.0);
+            self.result_card(&mut cols[0], p);
+            self.weather_right(&mut cols[1], p);
         });
 
-        ui.add_space(16.0);
-        self.weather_strip(ui, p);
+        ui.add_space(12.0);
+        self.chart_card(ui, p);
 
         if enter_pressed {
             self.try_compute();
@@ -609,20 +613,21 @@ impl App {
         }
     }
 
-    fn weather_strip(&mut self, ui: &mut egui::Ui, p: &Palette) {
+    /// Cột phải: tiêu đề + làm mới, thẻ thời tiết hiện tại có hiệu ứng, 5 ngày tới.
+    fn weather_right(&mut self, ui: &mut egui::Ui, p: &Palette) {
         let used = self.primary_state().and_then(|s| s.snapshot.clone().map(|snap| (s.source, snap, s.stale)));
         ui.horizontal(|ui| {
             title(ui, p, "Thời tiết A Lưới");
-            if let Some((_, snap, stale)) = &used {
-                let label = format!("{} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, *stale));
-                ui.label(RichText::new(label).size(11.0).color(p.muted));
-            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let can = !self.loading && self.scheduler.manual_allowed(unix_now());
                 let label = if self.loading { "Đang tải…" } else { "Làm mới" };
                 let ctx = ui.ctx().clone();
                 if ui.add_enabled(can, egui::Button::new(label)).on_hover_text("Ctrl/Cmd + R (tối đa 1 lần / 30 giây)").clicked() {
                     self.refresh_manually(&ctx);
+                }
+                if let Some((_, snap, stale)) = &used {
+                    let label = format!("{} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, *stale));
+                    ui.label(RichText::new(label).size(11.0).color(p.muted));
                 }
             });
         });
@@ -649,114 +654,187 @@ impl App {
             let why = self.sources.iter().find(|s| s.source == self.source()).and_then(|s| s.error.as_ref()).map(|e| format!(" ({e})")).unwrap_or_default();
             ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
         }
+        self.weather_hero(ui, &snap);
+        ui.add_space(8.0);
+        self.forecast_strip(ui, p, &snap, used_source);
+    }
+
+    /// Thẻ thời tiết hiện tại: nền theo trời (nắng, mây, mưa, dông, sương, đêm) có hiệu ứng động.
+    fn weather_hero(&self, ui: &mut egui::Ui, snap: &Snapshot) {
+        let sky = view::Sky::from_description(&snap.current.description);
+        let night = view::is_night(snap.current.observed_at, snap.tz_offset);
+        let animate = self.config.ui.animations;
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 150.0), egui::Sense::hover());
+        paint::hero_background(ui.painter(), rect, sky, night, ui.input(|i| i.time), animate);
+        if animate {
+            ui.ctx().request_repaint_after(Duration::from_millis(33));
+        }
+        let (white, soft) = (Color32::WHITE, Color32::from_rgb(0xE8, 0xED, 0xF7));
+        let painter = ui.painter();
+        let origin = rect.left_top();
+        painter.text(origin + egui::vec2(16.0, 12.0), egui::Align2::LEFT_TOP, "Hiện tại", FontId::proportional(12.0), soft);
+        painter.text(origin + egui::vec2(16.0, 28.0), egui::Align2::LEFT_TOP, format!("{}°C", format_vn(snap.current.temp, 1)), FontId::new(44.0, theme::semibold()), white);
+        let mut desc = snap.current.description.clone();
+        if let Some(first) = desc.get(..1).map(str::to_uppercase) {
+            desc = first + &desc[desc.chars().next().map_or(0, char::len_utf8)..];
+        }
+        painter.text(origin + egui::vec2(16.0, 88.0), egui::Align2::LEFT_TOP, desc, FontId::new(16.0, theme::semibold()), white);
+        let detail = format!("Độ ẩm {}% · Gió {} m/s", format_vn(snap.current.humidity, 0), format_vn(snap.current.wind_speed, 1));
+        painter.text(origin + egui::vec2(16.0, 116.0), egui::Align2::LEFT_TOP, detail, FontId::proportional(12.0), soft);
+    }
+
+    /// 5 ngày tới: biểu tượng, nhiệt độ, mưa, xác suất; viền đỏ khi nguồn chính báo mưa lớn.
+    fn forecast_strip(&self, ui: &mut egui::Ui, p: &Palette, snap: &Snapshot, used: Source) {
         let threshold = self.config.weather.rain_alert_mm;
-        let dates: Vec<chrono::NaiveDate> = snap.days.iter().take(5).map(|d| d.date).collect();
-        let others: Vec<&Snapshot> = self.sources.iter().filter(|s| s.source != used_source).filter_map(|s| s.snapshot.as_ref()).collect();
-        ui.columns(6, |cols| {
-            card(p).show(&mut cols[0], |ui| {
-                ui.set_width(ui.available_width());
-                ui.label(RichText::new("Hiện tại").size(13.0).color(p.primary));
-                ui.label(RichText::new(format!("{}°C", format_vn(snap.current.temp, 1))).font(FontId::new(24.0, theme::semibold())));
-                ui.label(RichText::new(&snap.current.description).size(12.0));
-                ui.label(RichText::new(format!("Ẩm {}% · Gió {} m/s", format_vn(snap.current.humidity, 0), format_vn(snap.current.wind_speed, 1))).size(11.0).color(p.muted));
-            });
-            for (col, day) in cols[1..].iter_mut().zip(snap.days.iter().take(5)) {
+        let others: Vec<&Snapshot> = self.sources.iter().filter(|s| s.source != used).filter_map(|s| s.snapshot.as_ref()).collect();
+        ui.columns(5, |cols| {
+            for (col, day) in cols.iter_mut().zip(snap.days.iter().take(5)) {
                 let other_rain: Vec<f64> = others.iter().filter_map(|o| o.days.iter().find(|d| d.date == day.date)).map(|d| d.rain_mm).collect();
                 let alert = view::rain_alert(day.rain_mm, &other_rain, threshold);
-                let frame = if alert == view::RainAlert::Primary { card(p).stroke(Stroke::new(2.0, p.error)) } else { card(p) };
+                let base = Frame::new().fill(p.card).stroke(Stroke::new(1.0, p.border)).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8));
+                let frame = if alert == view::RainAlert::Primary { base.stroke(Stroke::new(2.0, p.error)) } else { base };
                 frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
-                    let head = format!("{} · {}", view::weekday_vn(day.date), day.date.format("%d/%m"));
-                    ui.label(RichText::new(head).font(FontId::new(13.0, theme::semibold())).color(p.primary));
-                    ui.label(RichText::new(&day.description).size(12.0));
-                    ui.label(RichText::new(format!("{}° / {}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(14.0));
-                    let rain = RichText::new(format!("Mưa {} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
+                    ui.label(RichText::new(format!("{} · {}", view::weekday_vn(day.date), day.date.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
+                    paint::icon_in(ui, 30.0, view::Sky::from_description(&day.description), p);
+                    ui.label(RichText::new(format!("{}°–{}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(12.0));
+                    let rain = RichText::new(format!("{} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
                     ui.label(if alert == view::RainAlert::Primary { rain.color(p.error) } else { rain.color(p.accent_text) });
-                    ui.label(RichText::new(format!("Xác suất {}%", format_vn(day.pop_percent, 0))).size(11.0).color(p.muted));
+                    ui.label(RichText::new(format!("Mưa {}%", format_vn(day.pop_percent, 0))).size(11.0).color(p.muted));
                     match alert {
                         view::RainAlert::Primary => {
                             ui.label(RichText::new("⚠ Mưa lớn").size(11.0).color(p.error));
                         }
                         view::RainAlert::OtherSources => {
-                            ui.label(RichText::new("⚠ Có nguồn báo mưa lớn").size(11.0).color(p.error));
+                            ui.label(RichText::new("⚠ Nguồn khác báo mưa lớn").size(11.0).color(p.error));
                         }
                         view::RainAlert::None => {}
                     }
                     if day.partial {
-                        ui.label(RichText::new("dữ liệu một phần").size(11.0).color(p.muted));
+                        ui.label(RichText::new("thiếu dữ liệu").size(11.0).color(p.muted));
                     }
                 });
             }
         });
-        self.comparison_table(ui, p, &dates);
     }
 
-    /// Bảng đối chiếu: mỗi nguồn một hàng, mỗi ngày một cột, hàng cuối là độ chênh giữa các nguồn.
-    fn comparison_table(&self, ui: &mut egui::Ui, p: &Palette, dates: &[chrono::NaiveDate]) {
+    /// So sánh dự báo mưa giữa các nguồn: kết luận bằng lời, biểu đồ cột, rồi mới đến số liệu chi tiết.
+    fn chart_card(&self, ui: &mut egui::Ui, p: &Palette) {
+        let Some(used) = self.primary_state().and_then(|s| s.snapshot.as_ref()) else { return };
         let threshold = self.config.weather.rain_alert_mm;
-        ui.add_space(12.0);
+        let dates: Vec<chrono::NaiveDate> = used.days.iter().take(5).map(|d| d.date).collect();
+        let with_data: Vec<(&str, &[luuluong_weather::Day])> =
+            self.sources.iter().filter_map(|s| Some((s.source.short_label(), s.snapshot.as_ref()?.days.as_slice()))).collect();
+        let series = view::rain_series(&dates, &with_data);
+        let day_labels: Vec<String> = dates.iter().map(|d| format!("{} {}", view::weekday_vn(*d), d.format("%d/%m"))).collect();
+        let verdicts: Vec<view::Verdict> = dates
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let rains: Vec<(&str, f64)> = series.iter().filter_map(|s| Some((s.label.as_str(), s.values[i]?))).collect();
+                view::verdict(&d.format("%d/%m").to_string(), &rains, threshold)
+            })
+            .collect();
+        let rank = |l: view::Agreement| match l {
+            view::Agreement::Heavy => 3,
+            view::Agreement::Differ => 2,
+            view::Agreement::Agree => 1,
+            view::Agreement::Single => 0,
+        };
+        let symbol = |l: view::Agreement| match l {
+            view::Agreement::Heavy | view::Agreement::Differ => "⚠",
+            view::Agreement::Agree => "✓",
+            view::Agreement::Single => "ℹ",
+        };
+        let color = |l: view::Agreement| match l {
+            view::Agreement::Heavy => p.error,
+            view::Agreement::Differ => p.accent_text,
+            _ => p.primary,
+        };
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            title(ui, p, "So sánh nguồn · mưa dự kiến (mm/ngày)");
+            title(ui, p, "So sánh dự báo mưa giữa các nguồn");
+            if let Some(top) = verdicts.iter().rev().max_by_key(|v| rank(v.level)) {
+                ui.add_space(4.0);
+                ui.label(RichText::new(format!("{} Cần chú ý: {}", symbol(top.level), top.text)).font(FontId::new(14.0, theme::semibold())).color(color(top.level)));
+            }
             ui.label(
-                RichText::new("Các nguồn thường bất đồng về mưa. Hàng cuối là chênh lệch giữa nguồn cao nhất và thấp nhất. † là ngày thiếu dữ liệu nên tổng mưa có thể thấp hơn thực tế.")
-                    .size(11.0)
-                    .color(p.muted),
+                RichText::new(format!(
+                    "Mỗi cột là lượng mưa dự kiến cả ngày của một nguồn (số trên đầu cột, đơn vị mm). Vạch đỏ nét đứt là ngưỡng cảnh báo mưa lớn ({} mm).",
+                    format_vn(threshold, 0)
+                ))
+                .size(11.0)
+                .color(p.muted),
             );
             ui.add_space(6.0);
-            egui::Grid::new("compare").num_columns(1 + dates.len()).spacing([16.0, 8.0]).striped(true).show(ui, |ui| {
-                ui.label("");
-                for d in dates {
-                    ui.label(RichText::new(format!("{} · {}", view::weekday_vn(*d), d.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
+            chart::rain_chart(ui, p, &day_labels, &series, threshold, 230.0);
+            for s in &self.sources {
+                if let Some(e) = &s.error {
+                    ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(11.0).color(p.error));
                 }
-                ui.end_row();
-                for st in &self.sources {
-                    ui.vertical(|ui| {
-                        ui.set_max_width(190.0);
-                        ui.label(RichText::new(st.source.short_label()).font(FontId::new(13.0, theme::semibold())));
-                        if let Some(e) = &st.error {
-                            ui.label(RichText::new(format!("⚠ {e}")).size(11.0).color(p.error));
-                        } else if st.stale {
-                            ui.label(RichText::new("dữ liệu cũ").size(11.0).color(p.muted));
-                        }
-                    });
-                    for date in dates {
-                        match st.snapshot.as_ref().and_then(|s| s.days.iter().find(|d| d.date == *date)) {
-                            Some(day) => {
-                                ui.vertical(|ui| {
-                                    let mark = if day.partial { " †" } else { "" };
-                                    let color = if day.rain_mm >= threshold { p.error } else { p.accent_text };
-                                    ui.label(RichText::new(format!("{}{mark}", format_vn(day.rain_mm, 1))).font(FontId::new(14.0, theme::semibold())).color(color));
-                                    let sub = format!("{}% · {}–{}°", format_vn(day.pop_percent, 0), format_vn(day.temp_min, 0), format_vn(day.temp_max, 0));
-                                    ui.label(RichText::new(sub).size(11.0).color(p.muted));
-                                });
-                            }
-                            None => {
-                                ui.label(RichText::new("—").color(p.muted));
-                            }
-                        }
-                    }
-                    ui.end_row();
+            }
+            ui.add_space(6.0);
+            ui.collapsing(RichText::new("Kết luận từng ngày").size(13.0), |ui| {
+                for v in &verdicts {
+                    ui.label(RichText::new(format!("{} {}", symbol(v.level), v.text)).size(12.0).color(color(v.level)));
                 }
-                ui.label(RichText::new("Chênh lệch").font(FontId::new(13.0, theme::semibold())));
-                for date in dates {
-                    let rains: Vec<f64> = self
-                        .sources
-                        .iter()
-                        .filter_map(|s| s.snapshot.as_ref()?.days.iter().find(|d| d.date == *date))
-                        .map(|d| d.rain_mm)
-                        .collect();
-                    if rains.len() < 2 {
-                        ui.label(RichText::new("—").color(p.muted));
-                        continue;
-                    }
-                    let spread = rains.iter().cloned().fold(f64::MIN, f64::max) - rains.iter().cloned().fold(f64::MAX, f64::min);
-                    // Chênh từ nửa ngưỡng cảnh báo trở lên coi là các nguồn bất đồng lớn.
-                    let color = if spread >= threshold / 2.0 { p.error } else { p.text };
-                    ui.label(RichText::new(format_vn(spread, 1)).font(FontId::new(14.0, theme::semibold())).color(color));
-                }
-                ui.end_row();
             });
+            ui.collapsing(RichText::new("Bảng số liệu chi tiết").size(13.0), |ui| {
+                self.comparison_table(ui, p, &dates);
+            });
+        });
+    }
+
+    /// Bảng số liệu: mỗi nguồn một hàng, mỗi ngày một cột (mưa, xác suất, nhiệt độ) và hàng chênh lệch.
+    fn comparison_table(&self, ui: &mut egui::Ui, p: &Palette, dates: &[chrono::NaiveDate]) {
+        let threshold = self.config.weather.rain_alert_mm;
+        ui.label(RichText::new("† là ngày thiếu dữ liệu nên tổng mưa có thể thấp hơn thực tế.").size(11.0).color(p.muted));
+        egui::Grid::new("compare").num_columns(1 + dates.len()).spacing([16.0, 8.0]).striped(true).show(ui, |ui| {
+            ui.label("");
+            for d in dates {
+                ui.label(RichText::new(format!("{} · {}", view::weekday_vn(*d), d.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
+            }
+            ui.end_row();
+            for st in &self.sources {
+                ui.vertical(|ui| {
+                    ui.set_max_width(190.0);
+                    ui.label(RichText::new(st.source.short_label()).font(FontId::new(13.0, theme::semibold())));
+                    if let Some(e) = &st.error {
+                        ui.label(RichText::new(format!("⚠ {e}")).size(11.0).color(p.error));
+                    } else if st.stale {
+                        ui.label(RichText::new("dữ liệu cũ").size(11.0).color(p.muted));
+                    }
+                });
+                for date in dates {
+                    match st.snapshot.as_ref().and_then(|s| s.days.iter().find(|d| d.date == *date)) {
+                        Some(day) => {
+                            ui.vertical(|ui| {
+                                let mark = if day.partial { " †" } else { "" };
+                                let color = if day.rain_mm >= threshold { p.error } else { p.accent_text };
+                                ui.label(RichText::new(format!("{}{mark}", format_vn(day.rain_mm, 1))).font(FontId::new(14.0, theme::semibold())).color(color));
+                                let sub = format!("{}% · {}–{}°", format_vn(day.pop_percent, 0), format_vn(day.temp_min, 0), format_vn(day.temp_max, 0));
+                                ui.label(RichText::new(sub).size(11.0).color(p.muted));
+                            });
+                        }
+                        None => {
+                            ui.label(RichText::new("—").color(p.muted));
+                        }
+                    }
+                }
+                ui.end_row();
+            }
+            ui.label(RichText::new("Chênh lệch").font(FontId::new(13.0, theme::semibold())));
+            for date in dates {
+                let rains: Vec<f64> = self.sources.iter().filter_map(|s| s.snapshot.as_ref()?.days.iter().find(|d| d.date == *date)).map(|d| d.rain_mm).collect();
+                if rains.len() < 2 {
+                    ui.label(RichText::new("—").color(p.muted));
+                    continue;
+                }
+                let spread = rains.iter().cloned().fold(f64::MIN, f64::max) - rains.iter().cloned().fold(f64::MAX, f64::min);
+                let color = if spread >= threshold / 2.0 { p.error } else { p.text };
+                ui.label(RichText::new(format_vn(spread, 1)).font(FontId::new(14.0, theme::semibold())).color(color));
+            }
+            ui.end_row();
         });
     }
 
@@ -803,7 +881,7 @@ impl App {
     fn result_card(&self, ui: &mut egui::Ui, p: &Palette) {
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_min_height(300.0);
+            ui.set_min_height(160.0);
             title(ui, p, "Kết quả");
             ui.add_space(8.0);
             let Some(o) = &self.result else {

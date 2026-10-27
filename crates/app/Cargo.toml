@@ -9,5 +9,6 @@ luuluong-core = { path = "../core" }
 eframe = { version = ">=0.30", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 luuluong-weather = { path = "../weather" }
 directories = "5"
+egui_plot = ">=0.32"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 luuluong-storage = { path = "../storage" }

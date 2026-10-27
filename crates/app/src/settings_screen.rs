@@ -190,6 +190,9 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
                     ui.selectable_value(&mut self.settings.theme, "dark".into(), "Tối");
                 });
             ui.add_space(8.0);
+            ui.checkbox(&mut self.settings.animations, "Hiệu ứng động (mưa, mây, radar tự phát)");
+            ui.label(RichText::new("Tắt nếu hiệu ứng gây khó chịu hoặc máy yếu.").size(11.0).color(p.muted));
+            ui.add_space(8.0);
             ui.label(RichText::new("Tên người vận hành (ghi vào lịch sử, có thể để trống)").size(13.0));
             ui.add(egui::TextEdit::singleline(&mut self.settings.operator).desired_width(240.0).margin(Margin::symmetric(8, 8)));
         });

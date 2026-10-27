@@ -37,6 +37,7 @@ pub struct SettingsForm {
     /// `system` | `light` | `dark`
     pub theme: String,
     pub operator: String,
+    pub animations: bool,
 }
 
 impl SettingsForm {
@@ -53,6 +54,7 @@ impl SettingsForm {
             compare: c.weather.sources.iter().filter_map(|id| Source::from_id(id)).collect(),
             theme: c.ui.theme.clone(),
             operator: c.ui.operator.clone(),
+            animations: c.ui.animations,
         }
     }
 
@@ -100,6 +102,7 @@ impl SettingsForm {
         c.weather.sources = Source::ALL.iter().filter(|s| **s == self.source || self.compare.contains(s)).map(|s| s.id()).collect();
         c.ui.theme = self.theme.clone();
         c.ui.operator = self.operator.trim().to_string();
+        c.ui.animations = self.animations;
         Ok(c)
     }
 }
@@ -142,6 +145,14 @@ mod tests {
         assert_eq!((c.ui.operator.as_str(), c.ui.theme.as_str()), ("Linh", "dark"));
         assert_eq!(c.weather.source, "open-meteo:gfs_seamless");
         assert_eq!(c.reservoir.volume_table, "C:/bang.csv");
+    }
+
+    #[test]
+    fn animations_toggle_roundtrips() {
+        let mut f = form();
+        assert!(f.animations);
+        f.animations = false;
+        assert!(!f.to_config(&Config::default()).unwrap().ui.animations);
     }
 
     #[test]

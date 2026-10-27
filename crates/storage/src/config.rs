@@ -53,6 +53,8 @@ pub struct Ui {
     pub theme: String,
     /// Tên người vận hành, ghi vào mỗi dòng lịch sử (tùy chọn).
     pub operator: String,
+    /// Hiệu ứng động (mưa, mây, radar tự phát). Tắt cho người nhạy cảm với chuyển động.
+    pub animations: bool,
 }
 
 impl Default for Reservoir {
@@ -87,7 +89,7 @@ impl Default for Weather {
 
 impl Default for Ui {
     fn default() -> Self {
-        Self { theme: "system".into(), operator: String::new() }
+        Self { theme: "system".into(), operator: String::new(), animations: true }
     }
 }
 
@@ -138,6 +140,16 @@ mod tests {
         assert_eq!((c.weather.lat, c.weather.lon, c.weather.refresh_minutes), (16.22, 107.25, 60));
         assert_eq!(c.weather.rain_alert_mm, 50.0);
         assert_eq!(c.ui.theme, "system");
+    }
+
+    #[test]
+    fn animations_are_on_by_default_and_old_files_keep_them_on() {
+        assert!(Config::default().ui.animations);
+        let path = temp("cu2.toml");
+        std::fs::write(&path, "[ui]\ntheme = \"dark\"\n").unwrap();
+        let ui = Config::load(&path).unwrap().ui;
+        assert_eq!(ui.theme, "dark");
+        assert!(ui.animations);
     }
 
     #[test]
