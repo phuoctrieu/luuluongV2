@@ -1028,7 +1028,8 @@ impl App {
                                 let color = if day.rain_mm >= threshold { p.error } else { p.accent_text };
                                 ui.label(RichText::new(format!("{}{mark}", format_vn(day.rain_mm, 1))).font(FontId::new(14.0, theme::semibold())).color(color));
                                 let sub = format!("{}% · {}–{}°", format_vn(day.pop_percent, 0), format_vn(day.temp_min, 0), format_vn(day.temp_max, 0));
-                                ui.label(RichText::new(sub).size(12.0).color(p.muted));
+                                // Không xuống dòng: ô lưới tự co theo tiêu đề cột nên chữ dài bị bẻ dòng.
+                                ui.add(egui::Label::new(RichText::new(sub).size(12.0).color(p.muted)).wrap_mode(egui::TextWrapMode::Extend));
                             });
                         }
                         None => {
@@ -1162,13 +1163,16 @@ impl App {
                         });
                     });
                 ui.add_space(8.0);
-                if ui.button("Sao chép kết quả").clicked() {
-                    ui.ctx().copy_text(format!(
-                        "Lưu lượng nước về hồ: {} m³/s\nTổng lượng nước về hồ: {} m³",
-                        format_vn(o.q_in, 2),
-                        format_vn(o.w_in, 2)
-                    ));
-                }
+                // Trong `ui.columns` nút bị kéo giãn hết chiều ngang; ép canh trái đúng cỡ chữ.
+                ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    if ui.button("Sao chép kết quả").clicked() {
+                        ui.ctx().copy_text(format!(
+                            "Lưu lượng nước về hồ: {} m³/s\nTổng lượng nước về hồ: {} m³",
+                            format_vn(o.q_in, 2),
+                            format_vn(o.w_in, 2)
+                        ));
+                    }
+                });
                 if let Some(w) = &self.storage_warning {
                     ui.add_space(6.0);
                     paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(format!("{w} Kết quả vẫn đúng.")));

@@ -50,6 +50,9 @@ Mỗi bước kiểm tra: `cargo clippy --workspace -- -D warnings`, `cargo test
 - [x] B8 Thẻ ngày cao bằng nhau khi hẹp; nhãn xác suất đổi thành "Khả năng mưa tối đa" (đặc tả 3: lấy `pop` lớn nhất, KHÔNG đổi công thức)
 - [x] B9 Chụp lại 900×600 và 1100×720, sáng và tối (cờ dev `--size=WxH`, `--scroll=N`; HOME tạm để thử chế độ tối và ngưỡng cảnh báo thấp mà không đụng cấu hình thật). Đã thấy bằng mắt: thanh trên + chip, tab, nhập, kết quả rỗng, thời tiết, kết luận, bảng, radar, biểu đồ. CHƯA xem: Lịch sử, Cài đặt, hộp thoại, 4K, trạng thái lỗi mạng
 
+- [x] B10 Sau khi người dùng chạy thử (ảnh toàn màn hình): bảng Số liệu chi tiết không bẻ dòng ô (đã chụp xác nhận); nút "Sao chép kết quả" canh trái thay vì kéo giãn (chưa chụp được vì cần nhập số — người dùng xác nhận)
+- [ ] Còn mở: thời điểm tính hiện dạng ISO (`2026-10-27T14:09:13+07:00`) → nên hiện `27/10/2026 14:09:13`; ảnh radar để dải trống bên trái khi thẻ rộng; chú giải biểu đồ che vạch ngưỡng 50 mm
+
 ### Giai đoạn 5 — Đóng gói, CI
 
 ## Đang làm
