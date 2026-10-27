@@ -14,11 +14,16 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [ ] Người vận hành dùng thử và đồng ý giao diện (cổng giai đoạn 2); chưa kiểm tay luồng nhập → TÍNH → kết quả, 900×600 và 4K, sáng/tối
 - [ ] Đồ thị đường đặc tính (P1, `egui_plot`) — chưa làm
 ### Giai đoạn 3 — Thời tiết
+- [x] Crate `luuluong-weather`: gộp 3 giờ → ngày, cache JSON, `FreeProvider` (/weather + /forecast), ánh xạ lỗi 401/429/5xx/timeout/JSON sai; test bằng `mockito`. Tên trường JSON đã đối chiếu tài liệu OpenWeather ngày 2026-10-27
+- [x] App: luồng nền + `mpsc`, lịch làm mới (60 phút, thử lại 5 phút, lùi dần khi 429, thủ công ≥ 30 giây, Cmd/Ctrl+R), dải dự báo, cảnh báo mưa ≥ 50 mm, nhãn "dữ liệu cũ", cache khi mở app
+- [ ] Thử với API key thật (đặt `OPENWEATHER_API_KEY`) — chưa làm, chưa gọi API thật lần nào
+- [ ] Cổng giai đoạn 3: chạy ổn định 3 ngày liên tục, kể cả ngắt mạng — chưa làm
+- [ ] Biểu tượng thời tiết (hiện chỉ có chữ mô tả); ngưỡng mưa chỉnh trong Cài đặt (giai đoạn 4)
 ### Giai đoạn 4 — Lịch sử, CSV, Cài đặt
 ### Giai đoạn 5 — Đóng gói, CI
 
 ## Đang làm
-Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được, 34 test pass; còn kiểm tay và đồ thị.
+Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
 
 ## Quyết định đã chốt
 - GUI: egui/eframe; HTTP: ureq; Lịch sử: rusqlite bundled; API key: keyring.

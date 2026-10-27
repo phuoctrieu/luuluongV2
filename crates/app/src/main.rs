@@ -1,12 +1,34 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use app::form::{validate, Field, Form};
+use app::schedule::Scheduler;
 use app::theme::{self, Palette};
+use app::view;
 use eframe::egui::{self, Align, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Margin, Modifiers, RichText, Stroke};
 use luuluong_core::validate::format_vn;
 use luuluong_core::{compute, CalcError, Outputs, Turbine, VolumeTable};
+use luuluong_weather::free::FreeProvider;
+use luuluong_weather::{cache, Snapshot, WeatherError, WeatherProvider};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Xấp xỉ A Lưới; cần chỉnh theo vị trí nhà máy (đặc tả 10.4).
+const LAT: f64 = 16.22;
+const LON: f64 = 107.25;
+const REFRESH_MINUTES: u32 = 60;
+
+type WeatherResult = Result<Snapshot, WeatherError>;
+
+fn unix_now() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+fn cache_path() -> Option<PathBuf> {
+    directories::ProjectDirs::from("vn", "songbo", "luuluong").map(|d| d.cache_dir().join("weather_cache.json"))
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
@@ -28,11 +50,24 @@ struct App {
     confirm_quit: bool,
     allow_close: bool,
     focus_next: Option<Field>,
+    snapshot: Option<Snapshot>,
+    /// Đang hiển thị dữ liệu cache/cũ (lần làm mới gần nhất lỗi hoặc chưa xong).
+    stale: bool,
+    weather_error: Option<WeatherError>,
+    loading: bool,
+    scheduler: Scheduler,
+    tx: Sender<WeatherResult>,
+    rx: Receiver<WeatherResult>,
+    api_key: String,
+    cache_path: Option<PathBuf>,
 }
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::install(&cc.egui_ctx);
+        let (tx, rx) = channel();
+        let cache_path = cache_path();
+        let snapshot = cache_path.as_deref().and_then(cache::load);
         Self {
             table: VolumeTable::builtin(),
             turbine: Turbine::default(),
@@ -44,6 +79,61 @@ impl App {
             confirm_quit: false,
             allow_close: false,
             focus_next: None,
+            stale: snapshot.is_some(),
+            snapshot,
+            weather_error: None,
+            loading: false,
+            scheduler: Scheduler::new(REFRESH_MINUTES),
+            tx,
+            rx,
+            // Tạm thời đọc từ biến môi trường; giai đoạn 4 chuyển sang Keychain/Credential Manager.
+            api_key: std::env::var("OPENWEATHER_API_KEY").unwrap_or_default(),
+            cache_path,
+        }
+    }
+
+    fn start_fetch(&mut self, ctx: &egui::Context) {
+        self.loading = true;
+        self.scheduler.mark_attempt(unix_now());
+        let (tx, key, ctx) = (self.tx.clone(), self.api_key.clone(), ctx.clone());
+        std::thread::spawn(move || {
+            let _ = tx.send(FreeProvider::new(key).fetch(LAT, LON));
+            ctx.request_repaint();
+        });
+    }
+
+    fn poll_weather(&mut self, ctx: &egui::Context) {
+        while let Ok(result) = self.rx.try_recv() {
+            let now = unix_now();
+            self.loading = false;
+            match result {
+                Ok(snapshot) => {
+                    if let Some(path) = &self.cache_path {
+                        if let Err(e) = cache::save(path, &snapshot) {
+                            eprintln!("không ghi được cache thời tiết: {e}");
+                        }
+                    }
+                    self.snapshot = Some(snapshot);
+                    self.stale = false;
+                    self.weather_error = None;
+                    self.scheduler.record_ok(now);
+                }
+                Err(e) => {
+                    self.scheduler.record_err(now, &e);
+                    self.stale = true;
+                    self.weather_error = Some(e);
+                }
+            }
+        }
+        if !self.loading && self.scheduler.due(unix_now()) {
+            self.start_fetch(ctx);
+        }
+        ctx.request_repaint_after(Duration::from_secs(30));
+    }
+
+    fn refresh_manually(&mut self, ctx: &egui::Context) {
+        if !self.loading && self.scheduler.manual_allowed(unix_now()) {
+            self.start_fetch(ctx);
         }
     }
 
@@ -76,15 +166,19 @@ impl App {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        let (calc, clear, t1, t2, t3) = ctx.input_mut(|i| {
+        let (calc, clear, t1, t2, t3, refresh) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::COMMAND, Key::Enter),
                 i.consume_key(Modifiers::COMMAND, Key::Backspace),
                 i.consume_key(Modifiers::COMMAND, Key::Num1),
                 i.consume_key(Modifiers::COMMAND, Key::Num2),
                 i.consume_key(Modifiers::COMMAND, Key::Num3),
+                i.consume_key(Modifiers::COMMAND, Key::R),
             )
         });
+        if refresh {
+            self.refresh_manually(ctx);
+        }
         if calc {
             self.try_compute();
         }
@@ -129,6 +223,7 @@ fn field_label(f: Field) -> (&'static str, &'static str) {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let p = theme::palette(ctx);
+        self.poll_weather(ctx);
 
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             if self.form.is_empty() || self.result.is_some() {
@@ -186,17 +281,19 @@ impl eframe::App for App {
             .frame(Frame::new().fill(p.bg).inner_margin(Margin::symmetric(16, 6)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Thời tiết: chưa kết nối (giai đoạn 3)").size(11.0).color(p.muted));
+                    ui.label(RichText::new(self.weather_status()).size(11.0).color(p.muted));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.label(RichText::new(format!("Phiên bản {VERSION}")).size(11.0).color(p.muted));
                     });
                 });
             });
 
-        egui::CentralPanel::default().frame(Frame::new().fill(p.bg).inner_margin(Margin::same(16))).show(ctx, |ui| match self.tab {
-            Tab::Calc => self.calc_screen(ui, p),
-            Tab::History => placeholder(ui, p, "Lịch sử tính toán", "Sẽ có ở giai đoạn 4: tự lưu mỗi lần tính, lọc theo ngày, xuất CSV."),
-            Tab::Settings => placeholder(ui, p, "Cài đặt", "Sẽ có ở giai đoạn 4: lưu lượng tổ máy, API key, giao diện, bảng dung tích."),
+        egui::CentralPanel::default().frame(Frame::new().fill(p.bg).inner_margin(Margin::same(16))).show(ctx, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match self.tab {
+                Tab::Calc => self.calc_screen(ui, p),
+                Tab::History => placeholder(ui, p, "Lịch sử tính toán", "Sẽ có ở giai đoạn 4: tự lưu mỗi lần tính, lọc theo ngày, xuất CSV."),
+                Tab::Settings => placeholder(ui, p, "Cài đặt", "Sẽ có ở giai đoạn 4: lưu lượng tổ máy, API key, giao diện, bảng dung tích."),
+            });
         });
 
         if self.confirm_quit {
@@ -244,8 +341,12 @@ impl App {
                 ui.set_width(ui.available_width());
                 title(ui, p, "Thông số tính toán");
                 ui.add_space(8.0);
-                for f in REQUIRED {
-                    enter_pressed |= self.input_row(ui, p, f, &errors, &hint);
+                for pair in REQUIRED.chunks(2) {
+                    ui.columns(2, |cols| {
+                        for (col, f) in cols.iter_mut().zip(pair) {
+                            enter_pressed |= self.input_row(col, p, *f, &errors, &hint);
+                        }
+                    });
                 }
                 ui.add_space(4.0);
                 ui.collapsing(RichText::new("Xả nước (không bắt buộc)").size(13.0), |ui| {
@@ -269,6 +370,9 @@ impl App {
             self.result_card(&mut cols[1], p);
         });
 
+        ui.add_space(16.0);
+        self.weather_strip(ui, p);
+
         if enter_pressed {
             self.try_compute();
         }
@@ -278,6 +382,79 @@ impl App {
         if let Some(f) = self.focus_next.take() {
             ui.memory_mut(|m| m.request_focus(Self::field_id(f)));
         }
+    }
+
+    fn weather_status(&self) -> String {
+        match (&self.weather_error, &self.snapshot) {
+            (Some(e), _) => format!("Thời tiết: {e}"),
+            (None, Some(s)) => format!("Thời tiết: {}", view::updated_label(s.fetched_at, s.tz_offset, self.stale)),
+            (None, None) if self.loading => "Thời tiết: đang tải…".into(),
+            (None, None) => "Thời tiết: chưa có dữ liệu".into(),
+        }
+    }
+
+    fn weather_strip(&mut self, ui: &mut egui::Ui, p: &Palette) {
+        ui.horizontal(|ui| {
+            title(ui, p, "Thời tiết A Lưới");
+            if let Some(s) = &self.snapshot {
+                ui.label(RichText::new(view::updated_label(s.fetched_at, s.tz_offset, self.stale)).size(11.0).color(p.muted));
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let can = !self.loading && self.scheduler.manual_allowed(unix_now());
+                let label = if self.loading { "Đang tải…" } else { "Làm mới" };
+                let ctx = ui.ctx().clone();
+                if ui.add_enabled(can, egui::Button::new(label)).on_hover_text("Ctrl/Cmd + R (tối đa 1 lần / 30 giây)").clicked() {
+                    self.refresh_manually(&ctx);
+                }
+            });
+        });
+        if let Some(e) = &self.weather_error {
+            ui.label(RichText::new(format!("⚠ {e}")).size(12.0).color(p.error));
+        }
+        ui.add_space(4.0);
+        let Some(s) = self.snapshot.clone() else {
+            card(p).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                let msg = if self.loading {
+                    "Đang tải thời tiết…"
+                } else if self.api_key.trim().is_empty() {
+                    "Chưa có API key OpenWeather: đặt biến môi trường OPENWEATHER_API_KEY rồi mở lại app (mục Cài đặt sẽ có ở giai đoạn 4). Phần tính lưu lượng vẫn dùng bình thường."
+                } else {
+                    "Chưa có dữ liệu thời tiết. Phần tính lưu lượng vẫn dùng bình thường."
+                };
+                ui.label(RichText::new(msg).color(p.muted));
+            });
+            return;
+        };
+        ui.columns(6, |cols| {
+            card(p).show(&mut cols[0], |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(RichText::new("Hiện tại").size(13.0).color(p.primary));
+                ui.label(RichText::new(format!("{}°C", format_vn(s.current.temp, 1))).font(FontId::new(24.0, theme::semibold())));
+                ui.label(RichText::new(&s.current.description).size(12.0));
+                ui.label(RichText::new(format!("Ẩm {}% · Gió {} m/s", format_vn(s.current.humidity, 0), format_vn(s.current.wind_speed, 1))).size(11.0).color(p.muted));
+            });
+            for (col, day) in cols[1..].iter_mut().zip(s.days.iter().take(5)) {
+                let alert = day.rain_mm >= view::RAIN_ALERT_MM;
+                let frame = if alert { card(p).stroke(Stroke::new(2.0, p.error)) } else { card(p) };
+                frame.show(col, |ui| {
+                    ui.set_width(ui.available_width());
+                    let head = format!("{} · {}", view::weekday_vn(day.date), day.date.format("%d/%m"));
+                    ui.label(RichText::new(head).font(FontId::new(13.0, theme::semibold())).color(p.primary));
+                    ui.label(RichText::new(&day.description).size(12.0));
+                    ui.label(RichText::new(format!("{}° / {}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(14.0));
+                    let rain = RichText::new(format!("Mưa {} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
+                    ui.label(if alert { rain.color(p.error) } else { rain.color(p.accent_text) });
+                    ui.label(RichText::new(format!("Xác suất {}%", format_vn(day.pop_percent, 0))).size(11.0).color(p.muted));
+                    if alert {
+                        ui.label(RichText::new("⚠ Mưa lớn").size(11.0).color(p.error));
+                    }
+                    if day.partial {
+                        ui.label(RichText::new("dữ liệu một phần").size(11.0).color(p.muted));
+                    }
+                });
+            }
+        });
     }
 
     /// Trả về true nếu người dùng nhấn Enter trong ô này.
@@ -292,7 +469,7 @@ impl App {
             let r = ui.add(
                 egui::TextEdit::singleline(self.form.get_mut(f))
                     .id(Self::field_id(f))
-                    .desired_width(180.0)
+                    .desired_width((ui.available_width() - 64.0).clamp(90.0, 200.0))
                     .font(FontId::proportional(15.0))
                     .margin(Margin::symmetric(8, 8)),
             );

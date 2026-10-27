@@ -19,3 +19,5 @@
 - `scripts/xlsx_to_csv.py` — chuyển tinhtoan.xlsx sang CSV; `scripts/gen_python_cases.py` — sinh ca đối chiếu bằng logic Python cũ
 - `crates/app/` — ứng dụng egui `app`: `src/form.rs` (ô nhập → Inputs, lỗi theo ô), `src/theme.rs` (palette + font), `src/main.rs` (giao diện)
 - `crates/app/assets/BeVietnamPro-*.ttf` — font nhúng (SIL OFL)
+- `crates/weather/` — thư viện `luuluong-weather`: `aggregate.rs` (gộp ngày), `cache.rs`, `free.rs` (OpenWeather miễn phí), `provider.rs` (trait + kiểu dữ liệu), `error.rs`
+- `crates/app/src/schedule.rs` — lịch làm mới thời tiết; `src/view.rs` — định dạng hiển thị thời tiết
