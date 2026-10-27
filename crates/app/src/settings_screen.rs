@@ -234,6 +234,8 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
                 }
             }
         });
+        ui.add_space(6.0);
+        ui.label(RichText::new(format!("Phiên bản {}", super::VERSION)).size(12.0).color(p.muted));
         if let Some(n) = &self.settings_notice {
             ui.add_space(6.0);
             ui.label(RichText::new(n).size(12.0).color(p.muted));

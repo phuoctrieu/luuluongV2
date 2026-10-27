@@ -446,6 +446,8 @@ fn agreement_color(p: &Palette, l: view::Agreement) -> Color32 {
 fn card(p: &Palette) -> Frame {
     Frame::new()
         .fill(p.card)
+        .stroke(Stroke::new(1.0, p.border))
+        .shadow(egui::epaint::Shadow { offset: [0, 1], blur: 4, spread: 0, color: Color32::from_black_alpha(18) })
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::same(CARD_PAD as i8))
 }
@@ -525,17 +527,8 @@ impl eframe::App for App {
                             self.settings.theme = next.into();
                             let _ = self.save_config();
                         }
-                    });
-                });
-            });
-
-        egui::TopBottomPanel::bottom("status")
-            .frame(Frame::new().fill(p.bg).inner_margin(Margin::symmetric(16, 6)))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(self.weather_status()).size(11.0).color(p.muted));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(RichText::new(format!("Phiên bản {VERSION}")).size(11.0).color(p.muted));
+                        ui.add_space(8.0);
+                        ui.label(RichText::new(self.weather_status()).size(12.0).color(p.header_muted));
                     });
                 });
             });
@@ -596,10 +589,8 @@ impl App {
         let mut enter_pressed = false;
 
         ui.columns(2, |cols| {
-            let min_h = (stored_height(cols[0].ctx(), "h_weather") - 2.0 * CARD_PAD).max(0.0);
             card(p).show(&mut cols[0], |ui| {
                 ui.set_width(ui.available_width());
-                ui.set_min_height(min_h);
                 title(ui, p, "Thông số tính toán");
                 ui.add_space(8.0);
                 for pair in REQUIRED.chunks(2) {
@@ -625,25 +616,27 @@ impl App {
                 });
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    let size = egui::vec2(140.0, 44.0);
                     let calc = egui::Button::new(RichText::new("TÍNH TOÁN").font(FontId::new(15.0, theme::semibold())).color(p.on_accent))
                         .fill(p.accent)
-                        .min_size(size);
+                        .min_size(egui::vec2(180.0, 40.0));
                     if ui.add(calc).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         self.try_compute();
                     }
-                    let clear = egui::Button::new(RichText::new("XÓA DỮ LIỆU").font(FontId::new(15.0, theme::semibold()))).min_size(size);
+                    let clear = egui::Button::new(RichText::new("Xóa dữ liệu").color(p.muted))
+                        .fill(Color32::TRANSPARENT)
+                        .min_size(egui::vec2(0.0, 32.0));
                     if ui.add(clear).on_hover_text("Chỉ xóa các ô nhập, không xóa lịch sử. Ctrl/Cmd + Backspace").clicked() {
                         self.clear();
                     }
                 });
+                store_height(ui.ctx(), "h_input", ui.min_rect().height());
+                ui.set_min_height(stored_height(ui.ctx(), "h_result"));
             });
-            let h = self.weather_right(&mut cols[1], p);
-            store_height(cols[1].ctx(), "h_weather", h);
+            self.result_card(&mut cols[1], p);
         });
 
         ui.add_space(12.0);
-        self.result_card(ui, p);
+        self.weather_card(ui, p);
 
         ui.add_space(12.0);
         let data = self.compare_data();
@@ -693,11 +686,10 @@ impl App {
         }
     }
 
-    /// Cột phải: một thẻ gồm tiêu đề + làm mới, thời tiết hiện tại có hiệu ứng, trạng thái dữ liệu, 5 ngày tới. Trả về chiều cao thẻ.
-    fn weather_right(&mut self, ui: &mut egui::Ui, p: &Palette) -> f32 {
+    /// Thẻ toàn chiều rộng: tiêu đề + làm mới; bên trái thời tiết hiện tại có hiệu ứng, bên phải trạng thái dữ liệu và 5 ngày tới.
+    fn weather_card(&mut self, ui: &mut egui::Ui, p: &Palette) {
         let used = self.primary_state().and_then(|s| s.snapshot.clone().map(|snap| (s.source, snap, s.stale)));
-        card(p)
-            .show(ui, |ui| {
+        card(p).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     title(ui, p, "Thời tiết A Lưới");
@@ -730,8 +722,6 @@ impl App {
                     let why = self.sources.iter().find(|s| s.source == self.source()).and_then(|s| s.error.as_ref()).map(|e| format!(" ({e})")).unwrap_or_default();
                     ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
                 }
-                self.weather_hero(ui, &snap);
-                ui.add_space(4.0);
                 let error = self.primary_state().and_then(|s| s.error.as_ref());
                 let (status, color) = if self.loading {
                     ("Đang tải…".to_string(), p.muted)
@@ -742,16 +732,18 @@ impl App {
                 } else {
                     ("✓ Đã cập nhật".to_string(), p.primary)
                 };
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
-                    ui.label(RichText::new(status).font(FontId::new(12.0, theme::semibold())).color(color));
+                ui.horizontal_top(|ui| {
+                    ui.allocate_ui(egui::vec2(260.0, 150.0), |ui| self.weather_hero(ui, &snap));
+                    ui.vertical(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
+                            ui.label(RichText::new(status).font(FontId::new(12.0, theme::semibold())).color(color));
+                        });
+                        ui.add_space(6.0);
+                        self.forecast_strip(ui, p, &snap, used_source);
+                    });
                 });
-                ui.add_space(8.0);
-                self.forecast_strip(ui, p, &snap, used_source);
-            })
-            .response
-            .rect
-            .height()
+            });
     }
 
     /// Thẻ thời tiết hiện tại: nền theo trời (nắng, mây, mưa, dông, sương, đêm) có hiệu ứng động.
@@ -999,46 +991,40 @@ impl App {
     fn result_card(&self, ui: &mut egui::Ui, p: &Palette) {
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_min_height(160.0);
             title(ui, p, "Kết quả tính toán");
             ui.add_space(8.0);
-            let (Some(o), Some((inp, at))) = (&self.result, &self.calc_meta) else {
-                ui.label(RichText::new("Chưa có kết quả. Nhập thông số ở trên rồi nhấn TÍNH TOÁN (hoặc Enter).").color(p.muted));
-                return;
-            };
-            ui.label(RichText::new("LƯU LƯỢNG VỀ HỒ").font(FontId::new(12.0, theme::semibold())).color(p.muted));
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(format_vn(o.q_in, 2)).font(FontId::new(44.0, theme::semibold())).color(p.accent_text));
-                ui.label(RichText::new("m³/s").size(16.0).color(p.muted));
-            });
-            ui.add_space(8.0);
-            ui.columns(3, |cols| {
-                for (col, (name, value, unit)) in cols.iter_mut().zip([
-                    ("TỔNG LƯỢNG NƯỚC VỀ HỒ", format_vn(o.w_in, 2), "m³"),
-                    ("MỰC NƯỚC ĐẦU", format_vn(inp.z_start, 2), "m"),
-                    ("MỰC NƯỚC CUỐI", format_vn(inp.z_end, 2), "m"),
-                ]) {
-                    let tile = Frame::new().fill(p.bg).corner_radius(CornerRadius::same(6)).inner_margin(Margin::symmetric(12, 8)).show(col, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.label(RichText::new(name).font(FontId::new(11.0, theme::semibold())).color(p.muted));
-                        ui.label(RichText::new(format!("{value} {unit}")).font(FontId::new(16.0, theme::semibold())));
-                    });
-                    let r = tile.response.rect;
-                    col.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(3.0, r.height())), CornerRadius::same(2), p.primary);
-                }
-            });
-            ui.add_space(8.0);
-            egui::CollapsingHeader::new(RichText::new("Thông tin chi tiết").font(FontId::new(13.0, theme::semibold())).color(p.primary))
-                .default_open(true)
-                .show(ui, |ui| {
-                    let spill = if inp.spill_q > 0.0 && inp.spill_h > 0.0 {
-                        format!("{} m³/s × {} giờ", format_vn(inp.spill_q, 2), format_vn(inp.spill_h, 2))
-                    } else {
-                        "không xả tràn".into()
-                    };
-                    let eco = if inp.eco_q > 0.0 { format!("{} m³/s", format_vn(inp.eco_q, 2)) } else { "không có".into() };
-                    egui::Grid::new("breakdown").num_columns(2).spacing([24.0, 6.0]).show(ui, |ui| {
-                        for (name, v) in [
+            if let (Some(o), Some((inp, at))) = (&self.result, &self.calc_meta) {
+                ui.label(RichText::new("LƯU LƯỢNG VỀ HỒ").font(FontId::new(12.0, theme::semibold())).color(p.muted));
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format_vn(o.q_in, 2)).font(FontId::new(44.0, theme::semibold())).color(p.accent_text));
+                    ui.label(RichText::new("m³/s").size(16.0).color(p.muted));
+                });
+                ui.add_space(8.0);
+                ui.columns(2, |cols| {
+                    for (col, (name, value)) in cols.iter_mut().zip([
+                        ("TỔNG LƯỢNG NƯỚC VỀ HỒ", format!("{} m³", format_vn(o.w_in, 2))),
+                        ("MỰC NƯỚC ĐẦU → CUỐI", format!("{} → {} m", format_vn(inp.z_start, 2), format_vn(inp.z_end, 2))),
+                    ]) {
+                        let tile = Frame::new().fill(p.bg).corner_radius(CornerRadius::same(6)).inner_margin(Margin::symmetric(12, 8)).show(col, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(RichText::new(name).font(FontId::new(12.0, theme::semibold())).color(p.muted));
+                            ui.label(RichText::new(value).font(FontId::new(16.0, theme::semibold())));
+                        });
+                        let r = tile.response.rect;
+                        col.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(3.0, r.height())), CornerRadius::same(2), p.primary);
+                    }
+                });
+                ui.add_space(8.0);
+                egui::CollapsingHeader::new(RichText::new("Thông tin chi tiết").font(FontId::new(13.0, theme::semibold())).color(p.primary))
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        let spill = if inp.spill_q > 0.0 && inp.spill_h > 0.0 {
+                            format!("{} m³/s × {} giờ", format_vn(inp.spill_q, 2), format_vn(inp.spill_h, 2))
+                        } else {
+                            "không xả tràn".into()
+                        };
+                        let eco = if inp.eco_q > 0.0 { format!("{} m³/s", format_vn(inp.eco_q, 2)) } else { "không có".into() };
+                        let rows = [
                             ("Thời gian tính", format!("{} giờ", format_vn(inp.hours, 2))),
                             ("Giờ chạy máy H1", format!("{} giờ", format_vn(inp.h1, 2))),
                             ("Giờ chạy máy H2", format!("{} giờ", format_vn(inp.h2, 2))),
@@ -1050,31 +1036,40 @@ impl App {
                             ("V qua tuabin", format!("{} m³", format_vn(o.v_turbine, 2))),
                             ("V xả", format!("{} m³", format_vn(o.v_release, 2))),
                             ("Thời điểm tính toán", at.clone()),
-                        ] {
-                            ui.label(RichText::new(name).color(p.muted));
-                            ui.label(v);
-                            ui.end_row();
-                        }
+                        ];
+                        egui::Grid::new("breakdown").num_columns(4).spacing([16.0, 6.0]).show(ui, |ui| {
+                            for pair in rows.chunks(2) {
+                                for (name, v) in pair {
+                                    ui.label(RichText::new(*name).color(p.muted));
+                                    ui.label(v);
+                                }
+                                ui.end_row();
+                            }
+                        });
                     });
-                });
-            ui.add_space(8.0);
-            if ui.button("Sao chép kết quả").clicked() {
-                ui.ctx().copy_text(format!(
-                    "Lưu lượng nước về hồ: {} m³/s\nTổng lượng nước về hồ: {} m³",
-                    format_vn(o.q_in, 2),
-                    format_vn(o.w_in, 2)
-                ));
+                ui.add_space(8.0);
+                if ui.button("Sao chép kết quả").clicked() {
+                    ui.ctx().copy_text(format!(
+                        "Lưu lượng nước về hồ: {} m³/s\nTổng lượng nước về hồ: {} m³",
+                        format_vn(o.q_in, 2),
+                        format_vn(o.w_in, 2)
+                    ));
+                }
+                if let Some(w) = &self.storage_warning {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(format!("⚠ {w} Kết quả vẫn đúng.")).size(12.0).color(p.error));
+                }
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("Lưu ý: lưu lượng đến hồ ước tính (chưa tính bốc hơi, thấm; lưu lượng tổ máy là hằng số cài đặt).")
+                        .size(12.0)
+                        .color(p.muted),
+                );
+            } else {
+                ui.label(RichText::new("Chưa có kết quả. Nhập thông số bên trái rồi nhấn TÍNH TOÁN (hoặc Enter).").color(p.muted));
             }
-            if let Some(w) = &self.storage_warning {
-                ui.add_space(6.0);
-                ui.label(RichText::new(format!("⚠ {w} Kết quả vẫn đúng.")).size(11.0).color(p.error));
-            }
-            ui.add_space(8.0);
-            ui.label(
-                RichText::new("Lưu ý: đây là lưu lượng đến hồ ước tính (chưa tính bốc hơi, thấm; lưu lượng tổ máy là hằng số cài đặt).")
-                    .size(11.0)
-                    .color(p.muted),
-            );
+            store_height(ui.ctx(), "h_result", ui.min_rect().height());
+            ui.set_min_height(stored_height(ui.ctx(), "h_input"));
         });
     }
 }

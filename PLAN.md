@@ -33,6 +33,7 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [x] Sửa nhóm 3, 4, 5.1, 7.2 (test + clippy pass; CHƯA nhìn bằng mắt, cần `cargo run -p app`) — còn lại để xem sau khi duyệt hình: nav (2.1), nhập liệu + nút (3), kết quả (4), thẻ thời tiết/radar/dự báo (5–6), so sánh mưa + cảnh báo (7), trạng thái dữ liệu (10) — kiểm tra: `cargo test --workspace`, clippy sạch, T1–T6 pass, chụp ảnh 900×600 và 4K sáng/tối
 - [x] Phong cách: Industrial 50% + Weather 25% + Swiss 15% + Editorial 10% (thẻ không viền, nhãn mục viết hoa, ô KPI, cảnh báo dạng nhận định có vạch dọc) — chưa xem bằng mắt
 - [x] Gộp bố cục: hàng 1 = nhập | thời tiết+dự báo (một thẻ, cao bằng nhau), hàng 2 = kết quả, hàng 3 = radar | so sánh mưa (cao bằng nhau), hàng 4 = kết luận + bảng; biểu đồ có khung thông tin khi rê chuột (từng nguồn, chênh lệch, nhận định) — chưa xem bằng mắt
+- [x] Tối ưu diện tích (A+B+D): hàng 1 = nhập | kết quả (cao bằng nhau, chi tiết đóng mặc định, 2 cột), thẻ thời tiết toàn chiều rộng (hero trái, 5 ngày phải), nút TÍNH to / XÓA dạng nút phụ, bỏ thanh trạng thái đáy (trạng thái thời tiết lên thanh trên, phiên bản vào Cài đặt), thẻ có viền + bóng nhẹ — test + clippy pass, CHƯA nhìn bằng mắt. Chưa làm: C (thẻ tab radar/so sánh/bảng), E (hero thấp, giảm fps, nút biểu tượng), F (Cài đặt 2 cột, chế độ compact)
 - [ ] Nghiệm thu theo mục 13 (bỏ mục JavaScript/điện thoại vì app native desktop)
 
 ### Giai đoạn 5 — Đóng gói, CI
