@@ -35,6 +35,7 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [x] Gộp bố cục: hàng 1 = nhập | thời tiết+dự báo (một thẻ, cao bằng nhau), hàng 2 = kết quả, hàng 3 = radar | so sánh mưa (cao bằng nhau), hàng 4 = kết luận + bảng; biểu đồ có khung thông tin khi rê chuột (từng nguồn, chênh lệch, nhận định) — chưa xem bằng mắt
 - [x] Tối ưu diện tích (A+B+D): hàng 1 = nhập | kết quả (cao bằng nhau, chi tiết đóng mặc định, 2 cột), thẻ thời tiết toàn chiều rộng (hero trái, 5 ngày phải), nút TÍNH to / XÓA dạng nút phụ, bỏ thanh trạng thái đáy (trạng thái thời tiết lên thanh trên, phiên bản vào Cài đặt), thẻ có viền + bóng nhẹ — test + clippy pass, CHƯA nhìn bằng mắt. Chưa làm: C (thẻ tab radar/so sánh/bảng), E (hero thấp, giảm fps, nút biểu tượng), F (Cài đặt 2 cột, chế độ compact)
 - [x] Bố cục lần 2 (theo yêu cầu): điều hướng Tính toán/Lịch sử/Cài đặt thành thanh bên phải (tách khỏi tiêu đề), bỏ nút giao diện sáng/tối ở thanh trên (đổi trong Cài đặt), nhập + kết quả gộp một thẻ, 'Kết luận theo ngày' và 'Số liệu chi tiết' thành 2 thẻ riêng, biểu tượng thời tiết dùng ảnh Meteocons; sửa chiều cao thẻ và khung biểu đồ hiện nhầm — test + clippy pass, chờ xem bằng mắt
+- [x] Bố cục lần 3: 3 tab ngay dưới tiêu đề (thay thanh bên phải), nền tương phản sau biểu tượng thời tiết (ô màu trời ở thẻ ngày, vòng tối ở hero), thẻ Kết luận + Số liệu chi tiết cùng một hàng (38/62, bảng cuộn ngang khi hẹp) — test + clippy pass, chờ xem bằng mắt
 - [ ] Nghiệm thu theo mục 13 (bỏ mục JavaScript/điện thoại vì app native desktop)
 
 ### Giai đoạn 5 — Đóng gói, CI

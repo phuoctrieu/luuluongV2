@@ -500,26 +500,29 @@ impl eframe::App for App {
                 });
             });
 
-        egui::SidePanel::right("side_nav")
-            .exact_width(124.0)
-            .resizable(false)
-            .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0, p.border)).inner_margin(Margin::same(8)))
+        egui::TopBottomPanel::top("tabs")
+            .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0, p.border)).inner_margin(Margin::symmetric(16, 0)))
             .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
-                for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::History, "Lịch sử", "2"), (Tab::Settings, "Cài đặt", "3")] {
-                    let active = self.tab == tab;
-                    let text = if active {
-                        RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
-                    } else {
-                        RichText::new(name).size(14.0).color(p.text)
-                    };
-                    let fill = if active { p.primary.gamma_multiply(0.14) } else { Color32::TRANSPARENT };
-                    let button = egui::Button::new(text).fill(fill).stroke(Stroke::NONE).min_size(egui::vec2(ui.available_width(), 36.0));
-                    let r = ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(format!("Ctrl/Cmd + {key}"));
-                    if r.clicked() {
-                        self.tab = tab;
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::History, "Lịch sử", "2"), (Tab::Settings, "Cài đặt", "3")] {
+                        let active = self.tab == tab;
+                        let text = if active {
+                            RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
+                        } else {
+                            RichText::new(name).size(14.0).color(p.muted)
+                        };
+                        let button = egui::Button::new(text).frame(false).min_size(egui::vec2(96.0, 38.0));
+                        let r = ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(format!("Ctrl/Cmd + {key}"));
+                        if active {
+                            let line = Rect::from_min_max(egui::pos2(r.rect.left(), r.rect.bottom() - 3.0), r.rect.right_bottom());
+                            ui.painter().rect_filled(line, CornerRadius::ZERO, p.primary);
+                        }
+                        if r.clicked() {
+                            self.tab = tab;
+                        }
                     }
-                }
+                });
             });
 
         egui::CentralPanel::default().frame(Frame::new().fill(p.bg).inner_margin(Margin::same(16))).show(ctx, |ui| {
@@ -643,9 +646,14 @@ impl App {
         });
         if let Some(d) = &data {
             ui.add_space(12.0);
-            self.verdict_card(ui, p, d);
-            ui.add_space(12.0);
-            self.detail_card(ui, p, d);
+            let gap = 12.0;
+            let total = ui.available_width() - gap;
+            let left = (total * 0.38).max(260.0);
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                ui.allocate_ui(egui::vec2(left, 0.0), |ui| self.verdict_card(ui, p, d));
+                ui.allocate_ui(egui::vec2(total - left, 0.0), |ui| self.detail_card(ui, p, d));
+            });
         }
 
         if enter_pressed {
@@ -755,6 +763,7 @@ impl App {
         let (white, soft) = (Color32::WHITE, Color32::from_rgb(0xE8, 0xED, 0xF7));
         let painter = ui.painter();
         let icon_rect = Rect::from_min_size(rect.right_top() + egui::vec2(-80.0, 8.0), egui::vec2(72.0, 72.0));
+        painter.circle_filled(icon_rect.center(), 40.0, Color32::from_black_alpha(90));
         painter.image(icon.id(), icon_rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         let origin = rect.left_top();
         painter.text(origin + egui::vec2(16.0, 12.0), egui::Align2::LEFT_TOP, "Hiện tại", FontId::proportional(12.0), soft);
@@ -781,8 +790,11 @@ impl App {
                 frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
                     ui.label(RichText::new(format!("{} · {}", view::weekday_vn(day.date), day.date.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
-                    let icon = paint::sky_icon(ui.ctx(), view::Sky::from_description(&day.description), false);
-                    ui.image((icon.id(), egui::vec2(40.0, 40.0)));
+                    let sky = view::Sky::from_description(&day.description);
+                    let icon = paint::sky_icon(ui.ctx(), sky, false);
+                    let (badge, _) = ui.allocate_exact_size(egui::vec2(48.0, 48.0), egui::Sense::hover());
+                    ui.painter().rect_filled(badge, CornerRadius::same(10), paint::sky_gradient(sky, false).0);
+                    ui.painter().image(icon.id(), badge.shrink(2.0), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
                     ui.label(RichText::new(format!("{}°–{}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(12.0));
                     let rain = RichText::new(format!("{} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
                     ui.label(if alert == view::RainAlert::Primary { rain.color(p.error) } else { rain.color(p.accent_text) });
@@ -886,6 +898,9 @@ impl App {
             for v in &d.verdicts {
                 ui.label(RichText::new(format!("{} {}", agreement_symbol(v.level), v.text)).size(13.0).color(agreement_color(p, v.level)));
             }
+            let natural = ui.min_rect().height();
+            store_height(ui.ctx(), "h_verdict", natural);
+            ui.add_space((stored_height(ui.ctx(), "h_detail") - natural).max(0.0));
         });
     }
 
@@ -895,7 +910,10 @@ impl App {
             ui.set_width(ui.available_width());
             title(ui, p, "Số liệu chi tiết theo ngày");
             ui.add_space(6.0);
-            self.comparison_table(ui, p, &d.dates);
+            egui::ScrollArea::horizontal().auto_shrink([false, true]).show(ui, |ui| self.comparison_table(ui, p, &d.dates));
+            let natural = ui.min_rect().height();
+            store_height(ui.ctx(), "h_detail", natural);
+            ui.add_space((stored_height(ui.ctx(), "h_verdict") - natural).max(0.0));
         });
     }
 
@@ -903,7 +921,7 @@ impl App {
     fn comparison_table(&self, ui: &mut egui::Ui, p: &Palette, dates: &[chrono::NaiveDate]) {
         let threshold = self.config.weather.rain_alert_mm;
         ui.label(RichText::new("† là ngày thiếu dữ liệu nên tổng mưa có thể thấp hơn thực tế.").size(11.0).color(p.muted));
-        egui::Grid::new("compare").num_columns(1 + dates.len()).spacing([16.0, 8.0]).striped(true).show(ui, |ui| {
+        egui::Grid::new("compare").num_columns(1 + dates.len()).spacing([12.0, 8.0]).striped(true).show(ui, |ui| {
             ui.label("");
             for d in dates {
                 ui.label(RichText::new(format!("{} · {}", view::weekday_vn(*d), d.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
@@ -911,7 +929,7 @@ impl App {
             ui.end_row();
             for st in &self.sources {
                 ui.vertical(|ui| {
-                    ui.set_max_width(190.0);
+                    ui.set_max_width(120.0);
                     ui.label(RichText::new(st.source.short_label()).font(FontId::new(13.0, theme::semibold())));
                     if let Some(e) = &st.error {
                         ui.label(RichText::new(format!("⚠ {e}")).size(11.0).color(p.error));
