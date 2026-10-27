@@ -132,6 +132,7 @@ impl App {
             }
             let note = "Nguồn chính luôn được bật. NOAA GFS lấy qua Open-Meteo vì api.weather.gov chỉ phủ nước Mỹ. \
 Các nguồn có thể báo mưa rất khác nhau nên bảng so sánh hiện lượng mưa của từng nguồn. \
+Nguồn «Tổng hợp» là bản Open-Meteo pha từ chính các mô hình GFS, ECMWF, ICON nên không tính vào so sánh khi các mô hình đó đang bật. \
 Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần API key bên dưới.";
             ui.label(RichText::new(note).size(12.0).color(p.muted));
             ui.add_space(8.0);

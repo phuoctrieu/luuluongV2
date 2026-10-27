@@ -34,7 +34,7 @@ impl Model {
 
     pub fn label(self) -> &'static str {
         match self {
-            Model::BestMatch => "Tự chọn tốt nhất",
+            Model::BestMatch => "Tổng hợp",
             Model::Gfs => "NOAA GFS",
             Model::Ecmwf => "ECMWF",
             Model::Icon => "DWD ICON",

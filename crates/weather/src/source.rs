@@ -50,6 +50,13 @@ impl Source {
     }
 }
 
+/// `best_match` của Open-Meteo là bản tổng hợp từ chính các mô hình GFS/ECMWF/ICON, nên khi các mô hình
+/// đó đang bật thì không tính vào so sánh (tránh đếm trùng một nguồn thành hai phiếu).
+pub fn in_comparison(enabled: &[Source], s: Source) -> bool {
+    let has_models = enabled.iter().any(|o| matches!(o, Source::OpenMeteo(m) if *m != Model::BestMatch));
+    !(has_models && s == Source::OpenMeteo(Model::BestMatch))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,6 +72,22 @@ mod tests {
     fn stable_ids_in_config_files() {
         assert_eq!(Source::OpenWeather.id(), "openweather");
         assert_eq!(Source::OpenMeteo(Model::Gfs).id(), "open-meteo:gfs_seamless");
+    }
+
+    #[test]
+    fn best_match_is_left_out_when_individual_models_are_enabled() {
+        let blend = Source::OpenMeteo(Model::BestMatch);
+        let with_models = [Source::OpenWeather, blend, Source::OpenMeteo(Model::Gfs)];
+        assert!(!in_comparison(&with_models, blend));
+        assert!(in_comparison(&with_models, Source::OpenWeather));
+        assert!(in_comparison(&with_models, Source::OpenMeteo(Model::Gfs)));
+    }
+
+    #[test]
+    fn best_match_stays_when_no_individual_model_is_enabled() {
+        let blend = Source::OpenMeteo(Model::BestMatch);
+        assert!(in_comparison(&[blend], blend));
+        assert!(in_comparison(&[Source::OpenWeather, blend], blend));
     }
 
     #[test]

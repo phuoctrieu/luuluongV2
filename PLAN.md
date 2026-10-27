@@ -52,6 +52,7 @@ Mỗi bước kiểm tra: `cargo clippy --workspace -- -D warnings`, `cargo test
 
 - [x] B10 Sau khi người dùng chạy thử (ảnh toàn màn hình): bảng Số liệu chi tiết không bẻ dòng ô (đã chụp xác nhận); nút "Sao chép kết quả" canh trái thay vì kéo giãn (chưa chụp được vì cần nhập số — người dùng xác nhận)
 - [x] B11 Theo phản hồi người dùng: lưới nhập một cột đồng nhất (nhãn | ô 140 px + đơn vị, gợi ý/lỗi dưới ô; cùng cho nhóm xả); Kết luận + Số liệu chi tiết về cuối trang (hoàn lại thứ tự cũ của B6); tab bỏ "Cmd+n" khỏi nhãn, phím tắt trong tooltip (đã chụp xác nhận lưới nhập và tab)
+- [x] B12 Phương án A (người dùng chọn): `best_match` đổi tên "Tổng hợp", loại khỏi bảng/biểu đồ/kết luận/cảnh báo nguồn khác khi các mô hình riêng đang bật (`luuluong_weather::source::in_comparison`, 2 test mới); vẫn là nguồn chính được. Người dùng đã xóa `UI_LAYOUT_REDESIGN.md` (bỏ khỏi MAP.md; PLAN 4b vẫn nhắc tên file như lịch sử)
 - [ ] Còn mở: thời điểm tính hiện dạng ISO (`2026-10-27T14:09:13+07:00`) → nên hiện `27/10/2026 14:09:13`; ảnh radar để dải trống bên trái khi thẻ rộng; chú giải biểu đồ che vạch ngưỡng 50 mm
 
 ### Giai đoạn 5 — Đóng gói, CI
@@ -73,6 +74,7 @@ Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn h
 - Nguồn mặc định: chính `open-meteo:best_match`, so sánh cả 4 lựa chọn Open-Meteo (không cần key). OpenWeather phải tick trong Cài đặt. "Hiện tại" của Open-Meteo là một bộ chung cho cả lần gọi (API không tách theo mô hình). Open-Meteo miễn phí cho phi thương mại: cần xác nhận nhà máy có thuộc diện này không.
 - CSV dùng `;` và thập phân `,` để Excel tiếng Việt mở đúng; lịch sử có thêm cột `operator` (đặc tả F6 yêu cầu "người nhập").
 - Radar: RainViewer chỉ miễn phí cho cá nhân/giáo dục (cần xác nhận khi dùng ở nhà máy); OpenStreetMap yêu cầu ghi nguồn (đã ghi trên bản đồ) và nhận diện app qua User-Agent; không có khung dự báo (chỉ quan trắc 2 giờ gần nhất, app dùng 6 khung). Phủ sóng A Lưới đã kiểm (coverage mask + ảnh tile).
+- "Tổng hợp" (Open-Meteo best_match) không phải mô hình độc lập nên không tính vào so sánh khi GFS/ECMWF/ICON bật (2026-10-27).
 - Bảng màu biểu đồ Okabe–Ito (5 màu) + số trên đầu cột để không chỉ dựa vào màu; kết luận bằng lời: bất đồng lớn khi chênh ≥ nửa ngưỡng cảnh báo.
 - Font Be Vietnam Pro không bật được số đều (tabular) trong egui; chữ số kết quả có thể lệch nhẹ.
 

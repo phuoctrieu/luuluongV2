@@ -717,10 +717,12 @@ impl App {
     /// Ngày mưa lớn nhất trong 5 ngày tới theo mọi nguồn, nếu đạt ngưỡng cảnh báo.
     fn heavy_rain_alert(&self) -> Option<String> {
         let threshold = self.config.weather.rain_alert_mm;
-        let used = self.primary_state()?.snapshot.as_ref()?;
+        let primary = self.primary_state()?;
+        let used = primary.snapshot.as_ref()?;
+        let candidates: Vec<&SourceState> = self.compared_sources().into_iter().chain(std::iter::once(primary)).collect();
         let mut best: Option<(f64, chrono::NaiveDate, &str)> = None;
         for date in used.days.iter().take(5).map(|d| d.date) {
-            for s in &self.sources {
+            for s in &candidates {
                 let Some(day) = s.snapshot.as_ref().and_then(|snap| snap.days.iter().find(|d| d.date == date)) else { continue };
                 if day.rain_mm >= threshold && best.is_none_or(|(mm, ..)| day.rain_mm > mm) {
                     best = Some((day.rain_mm, date, s.source.short_label()));
@@ -728,6 +730,12 @@ impl App {
             }
         }
         best.map(|(mm, date, label)| format!("Mưa lớn {} {}: {} mm ({label})", view::weekday_vn(date), date.format("%d/%m"), format_vn(mm, 1)))
+    }
+
+    /// Các nguồn tham gia so sánh (bảng, biểu đồ, kết luận, cảnh báo nguồn khác): bỏ bản tổng hợp Open-Meteo khi đã có mô hình riêng.
+    fn compared_sources(&self) -> Vec<&SourceState> {
+        let enabled: Vec<Source> = self.sources.iter().map(|s| s.source).collect();
+        self.sources.iter().filter(|s| luuluong_weather::source::in_comparison(&enabled, s.source)).collect()
     }
 
     fn weather_status(&self) -> String {
@@ -842,7 +850,7 @@ impl App {
     /// 5 ngày tới: biểu tượng, nhiệt độ, mưa, xác suất; viền đỏ khi nguồn chính báo mưa lớn.
     fn forecast_strip(&self, ui: &mut egui::Ui, p: &Palette, snap: &Snapshot, used: Source) {
         let threshold = self.config.weather.rain_alert_mm;
-        let others: Vec<&Snapshot> = self.sources.iter().filter(|s| s.source != used).filter_map(|s| s.snapshot.as_ref()).collect();
+        let others: Vec<&Snapshot> = self.compared_sources().into_iter().filter(|s| s.source != used).filter_map(|s| s.snapshot.as_ref()).collect();
         // Mọi thẻ đều có viền 2 px (trong suốt khi không cảnh báo) và cao bằng thẻ cao nhất khung trước.
         let ctx = ui.ctx().clone();
         let day_h = stored_height(&ctx, "h_day");
@@ -895,7 +903,7 @@ impl App {
         let threshold = self.config.weather.rain_alert_mm;
         let dates: Vec<chrono::NaiveDate> = used.days.iter().take(5).map(|d| d.date).collect();
         let with_data: Vec<(&str, &[luuluong_weather::Day])> =
-            self.sources.iter().filter_map(|s| Some((s.source.short_label(), s.snapshot.as_ref()?.days.as_slice()))).collect();
+            self.compared_sources().into_iter().filter_map(|s| Some((s.source.short_label(), s.snapshot.as_ref()?.days.as_slice()))).collect();
         let series = view::rain_series(&dates, &with_data);
         let day_labels = dates.iter().map(|d| format!("{} {}", view::weekday_vn(*d), d.format("%d/%m"))).collect();
         let verdicts = dates
@@ -1000,7 +1008,8 @@ impl App {
                 ui.label(RichText::new(format!("{} · {}", view::weekday_vn(*d), d.format("%d/%m"))).font(FontId::new(12.0, theme::semibold())).color(p.primary));
             }
             ui.end_row();
-            for st in &self.sources {
+            let compared = self.compared_sources();
+            for st in &compared {
                 ui.vertical(|ui| {
                     ui.set_max_width(120.0);
                     ui.label(RichText::new(st.source.short_label()).font(FontId::new(13.0, theme::semibold())));
@@ -1031,7 +1040,7 @@ impl App {
             }
             ui.label(RichText::new("Chênh lệch").font(FontId::new(13.0, theme::semibold())));
             for date in dates {
-                let rains: Vec<f64> = self.sources.iter().filter_map(|s| s.snapshot.as_ref()?.days.iter().find(|d| d.date == *date)).map(|d| d.rain_mm).collect();
+                let rains: Vec<f64> = compared.iter().filter_map(|s| s.snapshot.as_ref()?.days.iter().find(|d| d.date == *date)).map(|d| d.rain_mm).collect();
                 if rains.len() < 2 {
                     ui.label(RichText::new("—").color(p.muted));
                     continue;
