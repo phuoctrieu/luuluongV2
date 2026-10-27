@@ -24,7 +24,9 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [x] Crate `luuluong-storage`: config.toml, lịch sử SQLite, xuất CSV (UTF-8 BOM, `;`, thập phân `,`), API key trong Keychain, nạp bảng CSV/XLSX (đã thử với `tinhtoan.xlsx` cũ)
 - [x] App: màn hình Lịch sử (lọc ngày, xóa có xác nhận, xuất CSV) và Cài đặt (tổ máy, nguồn, tọa độ, key, giao diện, bảng dung tích, mở thư mục dữ liệu); tự lưu lịch sử mỗi lần tính; 107 test pass
 - [x] Nhiều nguồn cùng lúc: `fetch_all` (OpenWeather một luồng + một lần gọi Open-Meteo cho nhiều mô hình), mỗi nguồn có kết quả/lỗi riêng; bảng "So sánh nguồn" trên màn hình chính (mưa, xác suất, nhiệt độ theo ngày + hàng chênh lệch); Cài đặt chọn nguồn chính + tick nguồn so sánh; cache theo nguồn. Thay cho cơ chế nguồn dự phòng cũ (đã xóa `chain.rs`)
-- [ ] CHƯA nhìn thấy bằng mắt bảng so sánh, màn hình Lịch sử và Cài đặt (chỉ có test logic + build); cần chạy `cargo run -p app` và thử từng thẻ (cờ dev `--tab=history|settings`)
+- [x] Thiết kế lại màn hình chính (skill ui-ux-pro-max): hai cột (trái: nhập + kết quả; phải: thẻ thời tiết có hiệu ứng, radar, 5 ngày), hàng dưới là biểu đồ cột so sánh nguồn + kết luận bằng lời; hiệu ứng và biểu tượng vẽ bằng code (nắng, trăng sao, mây, mưa, dông, sương mù); tùy chọn tắt hiệu ứng động trong Cài đặt
+- [x] Radar mưa: RainViewer (6 khung, 10 phút/khung) trên nền OpenStreetMap, ghép 3×3 tile zoom 7 quanh nhà máy, phát lại tự động, cache tile 14 ngày; đã gọi dịch vụ thật (test `--ignored live_radar`). Bản release 6,5 MB
+- [ ] CHƯA nhìn thấy bằng mắt: thẻ thời tiết/radar/biểu đồ mới, màn hình Lịch sử và Cài đặt (chỉ có test logic + build); cần chạy `cargo run -p app` và thử từng thẻ (cờ dev `--tab=history|settings`)
 - [ ] Chưa thử lưu/đọc API key thật trong Keychain; chưa thử nạp bảng ngoài trên giao diện
 ### Giai đoạn 5 — Đóng gói, CI
 
@@ -44,6 +46,8 @@ Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn h
 - NOAA/NWS (`api.weather.gov`) trả 404 cho A Lưới (đã thử 2026-10-27) nên không dùng; NOAA GFS lấy qua Open-Meteo `gfs_seamless`. Các mô hình bất đồng lớn: dự báo mưa 28/10 là 6,0 (GFS) / 12,1 (ICON) / 40,9 (best_match) / 44,5 mm (ECMWF).
 - Nguồn mặc định: chính `open-meteo:best_match`, so sánh cả 4 lựa chọn Open-Meteo (không cần key). OpenWeather phải tick trong Cài đặt. "Hiện tại" của Open-Meteo là một bộ chung cho cả lần gọi (API không tách theo mô hình). Open-Meteo miễn phí cho phi thương mại: cần xác nhận nhà máy có thuộc diện này không.
 - CSV dùng `;` và thập phân `,` để Excel tiếng Việt mở đúng; lịch sử có thêm cột `operator` (đặc tả F6 yêu cầu "người nhập").
+- Radar: RainViewer chỉ miễn phí cho cá nhân/giáo dục (cần xác nhận khi dùng ở nhà máy); OpenStreetMap yêu cầu ghi nguồn (đã ghi trên bản đồ) và nhận diện app qua User-Agent; không có khung dự báo (chỉ quan trắc 2 giờ gần nhất, app dùng 6 khung). Phủ sóng A Lưới đã kiểm (coverage mask + ảnh tile).
+- Bảng màu biểu đồ Okabe–Ito (5 màu) + số trên đầu cột để không chỉ dựa vào màu; kết luận bằng lời: bất đồng lớn khi chênh ≥ nửa ngưỡng cảnh báo.
 - Font Be Vietnam Pro không bật được số đều (tabular) trong egui; chữ số kết quả có thể lệch nhẹ.
 
 ## Việc cần chốt ở giai đoạn 2 (đã chốt: cam đậm `#B84A00` cho số kết quả giao diện sáng, 5,23:1)
