@@ -74,7 +74,7 @@ impl App {
             }
             if let Some(n) = self.export_notice.clone() {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(n).size(11.0).color(p.muted));
+                    ui.label(RichText::new(n).size(12.0).color(p.muted));
                     if ui.small_button("Mở thư mục").clicked() {
                         if let Some(d) = &self.data_dir {
                             open_folder(&d.join("exports"));
@@ -99,7 +99,7 @@ impl App {
                 ui.label(RichText::new(t).font(FontId::new(12.0, theme::semibold())).color(p.primary));
             };
             egui::Grid::new("history_head").num_columns(8).min_col_width(70.0).spacing([16.0, 6.0]).show(ui, |ui| {
-                for t in ["Thời điểm", "Z đầu → cuối (m)", "Tính (giờ)", "H1 / H2 (giờ)", "Q (m³/s)", "W (m³)", "Người nhập", ""] {
+                for t in ["Thời điểm", "Z đầu / cuối (m)", "Tính (giờ)", "H1 / H2 (giờ)", "Q (m³/s)", "W (m³)", "Người nhập", ""] {
                     head(ui, t);
                 }
                 ui.end_row();
@@ -110,7 +110,7 @@ impl App {
                 egui::Grid::new("history_rows").num_columns(8).min_col_width(70.0).spacing([16.0, 6.0]).show(ui, |ui| {
                     for r in &rows[range] {
                         ui.label(when(r));
-                        ui.label(format!("{} → {}", view::vn(r.z_start), view::vn(r.z_end)));
+                        ui.label(format!("{} / {}", view::vn(r.z_start), view::vn(r.z_end)));
                         ui.label(view::vn(r.hours));
                         ui.label(format!("{} / {}", view::vn(r.h1), view::vn(r.h2)));
                         ui.label(RichText::new(format_vn(r.q_in, 2)).font(FontId::new(13.0, theme::semibold())).color(p.accent_text));

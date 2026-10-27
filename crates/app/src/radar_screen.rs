@@ -204,7 +204,7 @@ impl App {
             ui.horizontal(|ui| {
                 title(ui, p, "Radar mưa");
                 if self.radar.loading {
-                    ui.label(RichText::new("đang tải…").size(11.0).color(p.muted));
+                    ui.label(RichText::new("đang tải…").size(12.0).color(p.muted));
                 }
             });
             ui.add_space(4.0);
@@ -240,7 +240,7 @@ impl App {
             painter.circle_filled(c, 6.0, p.accent);
             painter.circle_stroke(c, 6.0, Stroke::new(2.0, Color32::WHITE));
             let pill = |text: &str, pos: egui::Pos2, align_right: bool| {
-                let galley = painter.layout_no_wrap(text.to_owned(), FontId::proportional(11.0), Color32::WHITE);
+                let galley = painter.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), Color32::WHITE);
                 let size = galley.size();
                 let min = if align_right { pos - Vec2::new(size.x + 8.0, size.y + 4.0) } else { pos };
                 painter.rect_filled(Rect::from_min_size(min, size + Vec2::new(8.0, 4.0)), CornerRadius::same(4), Color32::from_black_alpha(175));
@@ -283,7 +283,7 @@ impl App {
             });
             ui.label(
                 RichText::new("Xanh nhạt: mưa nhẹ · xanh đậm, vàng: mưa vừa · đỏ: mưa rất to. Mỗi khung cách nhau 10 phút.")
-                    .size(11.0)
+                    .size(12.0)
                     .color(p.muted),
             );
         });

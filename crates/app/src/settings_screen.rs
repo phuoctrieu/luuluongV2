@@ -133,7 +133,7 @@ impl App {
             let note = "Nguồn chính luôn được bật. NOAA GFS lấy qua Open-Meteo vì api.weather.gov chỉ phủ nước Mỹ. \
 Các nguồn có thể báo mưa rất khác nhau nên bảng so sánh hiện lượng mưa của từng nguồn. \
 Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần API key bên dưới.";
-            ui.label(RichText::new(note).size(11.0).color(p.muted));
+            ui.label(RichText::new(note).size(12.0).color(p.muted));
             ui.add_space(8.0);
             text_row(ui, p, "Vĩ độ", "°", &mut self.settings.lat, error_for(&errors, SettingsField::Lat));
             text_row(ui, p, "Kinh độ", "°", &mut self.settings.lon, error_for(&errors, SettingsField::Lon));
@@ -144,7 +144,7 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
             ui.label(RichText::new("API key OpenWeather (lưu trong Keychain / Credential Manager)").size(13.0));
             let has_key = !self.api_key.trim().is_empty();
             let status = if has_key { "Đã có key." } else { "Chưa có key." };
-            ui.label(RichText::new(status).size(11.0).color(p.muted));
+            ui.label(RichText::new(status).size(12.0).color(p.muted));
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut self.key_input).password(true).desired_width(280.0).margin(Margin::symmetric(8, 8)));
                 let can_save = !self.key_input.trim().is_empty() && self.secrets.is_some();
@@ -191,7 +191,7 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
                 });
             ui.add_space(8.0);
             ui.checkbox(&mut self.settings.animations, "Hiệu ứng động (mưa, mây, radar tự phát)");
-            ui.label(RichText::new("Tắt nếu hiệu ứng gây khó chịu hoặc máy yếu.").size(11.0).color(p.muted));
+            ui.label(RichText::new("Tắt nếu hiệu ứng gây khó chịu hoặc máy yếu.").size(12.0).color(p.muted));
             ui.add_space(8.0);
             ui.label(RichText::new("Tên người vận hành (ghi vào lịch sử, có thể để trống)").size(13.0));
             ui.add(egui::TextEdit::singleline(&mut self.settings.operator).desired_width(240.0).margin(Margin::symmetric(8, 8)));
@@ -216,7 +216,7 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
                 }
             });
             if let Some(n) = &self.table_notice {
-                ui.label(RichText::new(n).size(11.0).color(p.muted));
+                ui.label(RichText::new(n).size(12.0).color(p.muted));
             }
         });
         ui.add_space(12.0);

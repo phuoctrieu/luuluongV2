@@ -19,6 +19,8 @@ pub struct Palette {
     pub text: Color32,
     pub muted: Color32,
     pub error: Color32,
+    /// Chữ trên nền màu lỗi (chip cảnh báo).
+    pub on_error: Color32,
 }
 
 const fn rgb(hex: u32) -> Color32 {
@@ -39,6 +41,7 @@ pub const LIGHT: Palette = Palette {
     text: rgb(0x06113C),
     muted: rgb(0x4A5575),
     error: rgb(0xC62828),
+    on_error: rgb(0xFFFFFF),
 };
 
 pub const DARK: Palette = Palette {
@@ -55,6 +58,7 @@ pub const DARK: Palette = Palette {
     text: rgb(0xE8EDF7),
     muted: rgb(0xA9B6D0),
     error: rgb(0xFF6B6B),
+    on_error: rgb(0x06113C),
 };
 
 pub fn palette(ctx: &egui::Context) -> &'static Palette {

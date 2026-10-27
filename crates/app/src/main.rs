@@ -483,6 +483,8 @@ impl eframe::App for App {
         }
         self.shortcuts(ctx);
 
+        let rain_alert = self.heavy_rain_alert();
+        let mut goto_calc = false;
         egui::TopBottomPanel::top("nav")
             .frame(Frame::new().fill(p.header_bg).inner_margin(Margin::symmetric(16, 8)))
             .show(ctx, |ui| {
@@ -494,10 +496,26 @@ impl eframe::App for App {
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.label(RichText::new(self.weather_status()).size(12.0).color(p.header_muted));
+                        if let Some(text) = &rain_alert {
+                            ui.add_space(12.0);
+                            let chip = Frame::new()
+                                .fill(p.error)
+                                .stroke(Stroke::new(1.0, p.header_text))
+                                .corner_radius(CornerRadius::same(12))
+                                .inner_margin(Margin::symmetric(10, 3))
+                                .show(ui, |ui| {
+                                    paint::note(ui, paint::Icon::Warn, p.on_error, 13.0, RichText::new(text).font(FontId::new(13.0, theme::semibold())));
+                                });
+                            let r = ui.interact(chip.response.rect, Id::new("rain_alert_chip"), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Xem chi tiết ở tab Tính toán");
+                            goto_calc |= r.clicked();
+                        }
                     });
                 });
             });
 
+        if goto_calc {
+            self.tab = Tab::Calc;
+        }
         egui::TopBottomPanel::top("tabs")
             .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0, p.border)).inner_margin(Margin::symmetric(16, 0)))
             .show(ctx, |ui| {
@@ -677,6 +695,22 @@ impl App {
             .or_else(|| self.sources.iter().find(|s| s.snapshot.is_some()))
     }
 
+    /// Ngày mưa lớn nhất trong 5 ngày tới theo mọi nguồn, nếu đạt ngưỡng cảnh báo.
+    fn heavy_rain_alert(&self) -> Option<String> {
+        let threshold = self.config.weather.rain_alert_mm;
+        let used = self.primary_state()?.snapshot.as_ref()?;
+        let mut best: Option<(f64, chrono::NaiveDate, &str)> = None;
+        for date in used.days.iter().take(5).map(|d| d.date) {
+            for s in &self.sources {
+                let Some(day) = s.snapshot.as_ref().and_then(|snap| snap.days.iter().find(|d| d.date == date)) else { continue };
+                if day.rain_mm >= threshold && best.is_none_or(|(mm, ..)| day.rain_mm > mm) {
+                    best = Some((day.rain_mm, date, s.source.short_label()));
+                }
+            }
+        }
+        best.map(|(mm, date, label)| format!("Mưa lớn {} {}: {} mm ({label})", view::weekday_vn(date), date.format("%d/%m"), format_vn(mm, 1)))
+    }
+
     fn weather_status(&self) -> String {
         let total = self.sources.len();
         let fresh = self.sources.iter().filter(|s| s.snapshot.is_some() && s.error.is_none()).count();
@@ -719,7 +753,7 @@ impl App {
                     if !self.loading && self.sources.iter().all(|s| s.error.is_none()) {
                         ui.label(RichText::new("Chưa có dữ liệu thời tiết.").color(p.muted));
                     }
-                    ui.label(RichText::new("Phần tính lưu lượng vẫn dùng bình thường.").size(11.0).color(p.muted));
+                    ui.label(RichText::new("Phần tính lưu lượng vẫn dùng bình thường.").size(12.0).color(p.muted));
                     return;
                 };
                 if used_source != self.source() {
@@ -765,6 +799,8 @@ impl App {
         if animate {
             ui.ctx().request_repaint_after(Duration::from_millis(33));
         }
+        // Lớp tối cố định sau cụm chữ để mây/mưa động không làm giảm độ tương phản.
+        ui.painter().rect_filled(Rect::from_min_size(rect.min + egui::vec2(8.0, 8.0), egui::vec2(196.0, rect.height() - 16.0)), CornerRadius::same(10), Color32::from_black_alpha(80));
         let icon = paint::sky_icon(ui.ctx(), sky, night);
         let (white, soft) = (Color32::WHITE, Color32::from_rgb(0xE8, 0xED, 0xF7));
         let painter = ui.painter();
@@ -772,7 +808,7 @@ impl App {
         painter.circle_filled(icon_rect.center(), 40.0, Color32::from_black_alpha(90));
         painter.image(icon.id(), icon_rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         let origin = rect.left_top();
-        painter.text(origin + egui::vec2(16.0, 12.0), egui::Align2::LEFT_TOP, "Hiện tại", FontId::proportional(12.0), soft);
+        painter.text(origin + egui::vec2(16.0, 12.0), egui::Align2::LEFT_TOP, "Hiện tại", FontId::proportional(13.0), soft);
         painter.text(origin + egui::vec2(16.0, 28.0), egui::Align2::LEFT_TOP, format!("{}°C", format_vn(snap.current.temp, 1)), FontId::new(44.0, theme::semibold()), white);
         let mut desc = snap.current.description.clone();
         if let Some(first) = desc.get(..1).map(str::to_uppercase) {
@@ -780,7 +816,7 @@ impl App {
         }
         painter.text(origin + egui::vec2(16.0, 88.0), egui::Align2::LEFT_TOP, desc, FontId::new(16.0, theme::semibold()), white);
         let detail = format!("Độ ẩm {}% · Gió {} m/s", format_vn(snap.current.humidity, 0), format_vn(snap.current.wind_speed, 1));
-        painter.text(origin + egui::vec2(16.0, 116.0), egui::Align2::LEFT_TOP, detail, FontId::proportional(12.0), soft);
+        painter.text(origin + egui::vec2(16.0, 116.0), egui::Align2::LEFT_TOP, detail, FontId::proportional(13.0), soft);
     }
 
     /// 5 ngày tới: biểu tượng, nhiệt độ, mưa, xác suất; viền đỏ khi nguồn chính báo mưa lớn.
@@ -804,7 +840,7 @@ impl App {
                     ui.label(RichText::new(format!("{}°–{}°", format_vn(day.temp_min, 0), format_vn(day.temp_max, 0))).size(12.0));
                     let rain = RichText::new(format!("{} mm", format_vn(day.rain_mm, 1))).font(FontId::new(13.0, theme::semibold()));
                     ui.label(if alert == view::RainAlert::Primary { rain.color(p.error) } else { rain.color(p.accent_text) });
-                    ui.label(RichText::new(format!("Mưa {}%", format_vn(day.pop_percent, 0))).size(11.0).color(p.muted));
+                    ui.label(RichText::new(format!("Mưa {}%", format_vn(day.pop_percent, 0))).size(12.0).color(p.muted));
                     match alert {
                         view::RainAlert::Primary => {
                             paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new("Mưa lớn"));
@@ -815,7 +851,7 @@ impl App {
                         view::RainAlert::None => {}
                     }
                     if day.partial {
-                        ui.label(RichText::new("thiếu dữ liệu").size(11.0).color(p.muted));
+                        ui.label(RichText::new("thiếu dữ liệu").size(12.0).color(p.muted));
                     }
                 });
             }
@@ -878,7 +914,7 @@ impl App {
                         "Mỗi cột là lượng mưa cả ngày của một nguồn (mm). Rê chuột vào một ngày để xem từng nguồn. Vạch đỏ nét đứt: ngưỡng cảnh báo {} mm.",
                         format_vn(d.threshold, 0)
                     ))
-                    .size(11.0)
+                    .size(12.0)
                     .color(p.muted),
                 );
                 ui.add_space(6.0);
@@ -926,7 +962,7 @@ impl App {
     /// Bảng số liệu: mỗi nguồn một hàng, mỗi ngày một cột (mưa, xác suất, nhiệt độ) và hàng chênh lệch.
     fn comparison_table(&self, ui: &mut egui::Ui, p: &Palette, dates: &[chrono::NaiveDate]) {
         let threshold = self.config.weather.rain_alert_mm;
-        ui.label(RichText::new("† là ngày thiếu dữ liệu nên tổng mưa có thể thấp hơn thực tế.").size(11.0).color(p.muted));
+        ui.label(RichText::new("† là ngày thiếu dữ liệu nên tổng mưa có thể thấp hơn thực tế.").size(12.0).color(p.muted));
         egui::Grid::new("compare").num_columns(1 + dates.len()).spacing([12.0, 8.0]).striped(true).show(ui, |ui| {
             ui.label("");
             for d in dates {
@@ -940,7 +976,7 @@ impl App {
                     if let Some(e) = &st.error {
                         paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(e.to_string()));
                     } else if st.stale {
-                        ui.label(RichText::new("dữ liệu cũ").size(11.0).color(p.muted));
+                        ui.label(RichText::new("dữ liệu cũ").size(12.0).color(p.muted));
                     }
                 });
                 for date in dates {
@@ -951,7 +987,7 @@ impl App {
                                 let color = if day.rain_mm >= threshold { p.error } else { p.accent_text };
                                 ui.label(RichText::new(format!("{}{mark}", format_vn(day.rain_mm, 1))).font(FontId::new(14.0, theme::semibold())).color(color));
                                 let sub = format!("{}% · {}–{}°", format_vn(day.pop_percent, 0), format_vn(day.temp_min, 0), format_vn(day.temp_max, 0));
-                                ui.label(RichText::new(sub).size(11.0).color(p.muted));
+                                ui.label(RichText::new(sub).size(12.0).color(p.muted));
                             });
                         }
                         None => {
@@ -1010,7 +1046,7 @@ impl App {
             // Màu lỗi luôn đi kèm chữ, không chỉ dựa vào màu.
             paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(error.unwrap().to_string()));
         } else {
-            ui.label(RichText::new(note).size(11.0).color(p.muted));
+            ui.label(RichText::new(note).size(12.0).color(p.muted));
         }
         ui.add_space(6.0);
         enter
@@ -1048,7 +1084,7 @@ impl App {
                     p,
                     [
                         ("TỔNG LƯỢNG NƯỚC VỀ HỒ", format!("{} m³", format_vn(o.w_in, 2))),
-                        ("MỰC NƯỚC ĐẦU → CUỐI", format!("{} → {} m", format_vn(inp.z_start, 2), format_vn(inp.z_end, 2))),
+                        ("MỰC NƯỚC ĐẦU / CUỐI", format!("{} / {} m", format_vn(inp.z_start, 2), format_vn(inp.z_end, 2))),
                     ],
                 );
                 ui.add_space(8.0);
@@ -1110,7 +1146,7 @@ impl App {
                     ui.label(RichText::new("m³/s").size(16.0).color(p.muted));
                 });
                 ui.add_space(8.0);
-                Self::kpi_tiles(ui, p, [("TỔNG LƯỢNG NƯỚC VỀ HỒ", "—".to_string()), ("MỰC NƯỚC ĐẦU → CUỐI", "—".to_string())]);
+                Self::kpi_tiles(ui, p, [("TỔNG LƯỢNG NƯỚC VỀ HỒ", "—".to_string()), ("MỰC NƯỚC ĐẦU / CUỐI", "—".to_string())]);
                 ui.add_space(12.0);
                 paint::note(ui, paint::Icon::Info, p.muted, 13.0, RichText::new("Nhập 5 thông số bắt buộc rồi nhấn TÍNH TOÁN (hoặc Enter)."));
             }
