@@ -70,7 +70,7 @@ impl App {
                 });
             });
             if self.history_date().is_err() {
-                ui.label(RichText::new("⚠ Nhập ngày dạng 31/12/2026").size(11.0).color(p.error));
+                app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new("Nhập ngày dạng 31/12/2026"));
             }
             if let Some(n) = self.export_notice.clone() {
                 ui.horizontal(|ui| {
@@ -83,7 +83,7 @@ impl App {
                 });
             }
             if let Some(w) = &self.storage_warning {
-                ui.label(RichText::new(format!("⚠ {w}")).size(11.0).color(p.error));
+                app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new(w.to_string()));
             }
             ui.add_space(8.0);
             if self.history_rows.is_empty() {

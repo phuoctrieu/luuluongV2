@@ -150,6 +150,51 @@ pub fn hero_background(painter: &Painter, rect: Rect, sky: Sky, night: bool, tim
     }
 }
 
+/// Biểu tượng trạng thái vẽ bằng nét, không phụ thuộc font của hệ điều hành.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Icon {
+    Ok,
+    Warn,
+    Info,
+}
+
+/// Vẽ biểu tượng trong ô vuông `rect`.
+pub fn draw_icon(painter: &Painter, rect: Rect, kind: Icon, color: Color32) {
+    let s = rect.width();
+    let c = rect.center();
+    let w = (s / 9.0).max(1.4);
+    let stroke = Stroke::new(w, color);
+    let at = |dx: f32, dy: f32| c + Vec2::new(dx * s, dy * s);
+    match kind {
+        Icon::Ok => {
+            painter.circle_stroke(c, s * 0.5 - w * 0.5, stroke);
+            painter.add(Shape::line(vec![at(-0.22, 0.0), at(-0.05, 0.17), at(0.25, -0.16)], stroke));
+        }
+        Icon::Warn => {
+            let tri = vec![at(0.0, -0.46), at(0.5, 0.4), at(-0.5, 0.4)];
+            painter.add(Shape::closed_line(tri, stroke));
+            painter.line_segment([at(0.0, -0.12), at(0.0, 0.08)], stroke);
+            painter.circle_filled(at(0.0, 0.24), w * 0.7, color);
+        }
+        Icon::Info => {
+            painter.circle_stroke(c, s * 0.5 - w * 0.5, stroke);
+            painter.circle_filled(at(0.0, -0.22), w * 0.7, color);
+            painter.line_segment([at(0.0, -0.05), at(0.0, 0.26)], stroke);
+        }
+    }
+}
+
+/// Dòng chữ có biểu tượng đứng trước; cỡ biểu tượng theo cỡ chữ `size`. Tự xuống dòng khi hẹp.
+pub fn note(ui: &mut egui::Ui, kind: Icon, color: Color32, size: f32, text: egui::RichText) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let side = size + 2.0;
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::hover());
+        draw_icon(ui.painter(), rect, kind, color);
+        ui.label(text.size(size).color(color));
+    });
+}
+
 /// Biểu tượng thời tiết dạng ảnh (Meteocons của Bas Milius, giấy phép MIT, xem `assets/weather/`), nạp một lần rồi giữ trong bộ nhớ tạm của egui.
 pub fn sky_icon(ctx: &egui::Context, sky: Sky, night: bool) -> egui::TextureHandle {
     let (name, bytes): (&str, &[u8]) = match (sky, night) {

@@ -427,11 +427,11 @@ fn agreement_rank(l: view::Agreement) -> u8 {
     }
 }
 
-fn agreement_symbol(l: view::Agreement) -> &'static str {
+fn agreement_icon(l: view::Agreement) -> paint::Icon {
     match l {
-        view::Agreement::Heavy | view::Agreement::Differ => "⚠",
-        view::Agreement::Agree => "✓",
-        view::Agreement::Single => "ℹ",
+        view::Agreement::Heavy | view::Agreement::Differ => paint::Icon::Warn,
+        view::Agreement::Agree => paint::Icon::Ok,
+        view::Agreement::Single => paint::Icon::Info,
     }
 }
 
@@ -712,7 +712,7 @@ impl App {
                     }
                     for s in &self.sources {
                         if let Some(e) = &s.error {
-                            ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(12.0).color(p.error));
+                            paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(format!("{}: {e}", s.source.short_label())));
                         }
                     }
                     if !self.loading && self.sources.iter().all(|s| s.error.is_none()) {
@@ -723,24 +723,29 @@ impl App {
                 };
                 if used_source != self.source() {
                     let why = self.sources.iter().find(|s| s.source == self.source()).and_then(|s| s.error.as_ref()).map(|e| format!(" ({e})")).unwrap_or_default();
-                    ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
+                    paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(format!("Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)));
                 }
                 let error = self.primary_state().and_then(|s| s.error.as_ref());
-                let (status, color) = if self.loading {
-                    ("Đang tải…".to_string(), p.muted)
+                let (icon, status, color) = if self.loading {
+                    (None, "Đang tải…".to_string(), p.muted)
                 } else if let Some(e) = error {
-                    (format!("⚠ Cập nhật thất bại ({e}), đang hiện dữ liệu cũ"), p.error)
+                    (Some(paint::Icon::Warn), format!("Cập nhật thất bại ({e}), đang hiện dữ liệu cũ"), p.error)
                 } else if stale {
-                    ("⚠ Dữ liệu cũ".to_string(), p.accent_text)
+                    (Some(paint::Icon::Warn), "Dữ liệu cũ".to_string(), p.accent_text)
                 } else {
-                    ("✓ Đã cập nhật".to_string(), p.primary)
+                    (Some(paint::Icon::Ok), "Đã cập nhật".to_string(), p.primary)
                 };
                 ui.horizontal_top(|ui| {
                     ui.allocate_ui(egui::vec2(280.0, 150.0), |ui| self.weather_hero(ui, &snap));
                     ui.vertical(|ui| {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
-                            ui.label(RichText::new(status).font(FontId::new(12.0, theme::semibold())).color(color));
+                            match icon {
+                                Some(kind) => paint::note(ui, kind, color, 12.0, RichText::new(status).font(FontId::new(12.0, theme::semibold()))),
+                                None => {
+                                    ui.label(RichText::new(status).font(FontId::new(12.0, theme::semibold())).color(color));
+                                }
+                            }
                         });
                         ui.add_space(6.0);
                         self.forecast_strip(ui, p, &snap, used_source);
@@ -801,10 +806,10 @@ impl App {
                     ui.label(RichText::new(format!("Mưa {}%", format_vn(day.pop_percent, 0))).size(11.0).color(p.muted));
                     match alert {
                         view::RainAlert::Primary => {
-                            ui.label(RichText::new("⚠ Mưa lớn").size(11.0).color(p.error));
+                            paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new("Mưa lớn"));
                         }
                         view::RainAlert::OtherSources => {
-                            ui.label(RichText::new("⚠ Nguồn khác báo mưa lớn").size(11.0).color(p.error));
+                            paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new("Nguồn khác: mưa lớn"));
                         }
                         view::RainAlert::None => {}
                     }
@@ -859,7 +864,7 @@ impl App {
                 let tint = agreement_color(p, level);
                 let callout = Frame::new().inner_margin(Margin { left: 14, right: 0, top: 2, bottom: 2 }).show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new(format!("{} {heading}", agreement_symbol(level))).font(FontId::new(12.0, theme::semibold())).color(tint));
+                    paint::note(ui, agreement_icon(level), tint, 12.0, RichText::new(heading).font(FontId::new(12.0, theme::semibold())));
                     if let Some(v) = body {
                         ui.label(RichText::new(&v.text).font(FontId::new(15.0, theme::semibold())).color(p.text));
                     }
@@ -880,7 +885,7 @@ impl App {
                 chart::rain_chart(ui, p, &d.day_labels, &d.series, &notes, d.threshold, 230.0);
                 for s in &self.sources {
                     if let Some(e) = &s.error {
-                        ui.label(RichText::new(format!("⚠ {}: {e}", s.source.short_label())).size(11.0).color(p.error));
+                        paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(format!("{}: {e}", s.source.short_label())));
                     }
                 }
             })
@@ -896,7 +901,7 @@ impl App {
             title(ui, p, "Kết luận theo ngày");
             ui.add_space(6.0);
             for v in &d.verdicts {
-                ui.label(RichText::new(format!("{} {}", agreement_symbol(v.level), v.text)).size(13.0).color(agreement_color(p, v.level)));
+                paint::note(ui, agreement_icon(v.level), agreement_color(p, v.level), 13.0, RichText::new(&v.text));
             }
             let natural = ui.min_rect().height();
             store_height(ui.ctx(), "h_verdict", natural);
@@ -932,7 +937,7 @@ impl App {
                     ui.set_max_width(120.0);
                     ui.label(RichText::new(st.source.short_label()).font(FontId::new(13.0, theme::semibold())));
                     if let Some(e) = &st.error {
-                        ui.label(RichText::new(format!("⚠ {e}")).size(11.0).color(p.error));
+                        paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(e.to_string()));
                     } else if st.stale {
                         ui.label(RichText::new("dữ liệu cũ").size(11.0).color(p.muted));
                     }
@@ -1002,7 +1007,7 @@ impl App {
         };
         if show_error {
             // Màu lỗi luôn đi kèm chữ, không chỉ dựa vào màu.
-            ui.label(RichText::new(format!("⚠ {}", error.unwrap())).size(11.0).color(p.error));
+            paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(error.unwrap().to_string()));
         } else {
             ui.label(RichText::new(note).size(11.0).color(p.muted));
         }
@@ -1079,7 +1084,7 @@ impl App {
                 }
                 if let Some(w) = &self.storage_warning {
                     ui.add_space(6.0);
-                    ui.label(RichText::new(format!("⚠ {w} Kết quả vẫn đúng.")).size(12.0).color(p.error));
+                    paint::note(ui, paint::Icon::Warn, p.error, 12.0, RichText::new(format!("{w} Kết quả vẫn đúng.")));
                 }
                 ui.add_space(8.0);
                 ui.label(

@@ -23,7 +23,7 @@ fn text_row(ui: &mut egui::Ui, p: &Palette, label: &str, unit: &str, value: &mut
         ui.label(RichText::new(unit).color(p.muted));
     });
     if let Some(e) = error {
-        ui.label(RichText::new(format!("⚠ {e}")).size(11.0).color(p.error));
+        app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new(e.to_string()));
     }
     ui.add_space(6.0);
 }
@@ -241,7 +241,7 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
             ui.label(RichText::new(n).size(12.0).color(p.muted));
         }
         if !errors.is_empty() {
-            ui.label(RichText::new("⚠ Còn ô chưa hợp lệ, xem các dòng đỏ ở trên.").size(12.0).color(p.error));
+            app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new("Còn ô chưa hợp lệ, xem các dòng đỏ ở trên."));
         }
     }
 }

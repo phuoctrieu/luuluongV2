@@ -38,6 +38,18 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [x] Bố cục lần 3: 3 tab ngay dưới tiêu đề (thay thanh bên phải), nền tương phản sau biểu tượng thời tiết (ô màu trời ở thẻ ngày, vòng tối ở hero), thẻ Kết luận + Số liệu chi tiết cùng một hàng (38/62, bảng cuộn ngang khi hẹp) — test + clippy pass, chờ xem bằng mắt
 - [ ] Nghiệm thu theo mục 13 (bỏ mục JavaScript/điện thoại vì app native desktop)
 
+### Giai đoạn 4c — Sửa 12 hạn chế sau review giao diện (2026-10-27)
+Mỗi bước kiểm tra: `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`, chạy `target/debug/app` rồi chụp màn hình.
+- [x] B1 Icon vẽ bằng code (ok/cảnh báo/thông tin) thay glyph ✓ ⚠ ℹ — kiểm tra: không còn glyph trong `crates/app/src`, ảnh chụp không có ô vuông rỗng
+- [ ] B2 Lưới nhập 3 cột cho nhóm giờ (Thời gian | H1 | H2) và nhóm xả (Q | giờ | tối thiểu); thẻ kết quả có khung rỗng giữ chỗ (—) — kiểm tra: ảnh chụp trước khi tính không còn ô lẻ, không còn nửa thẻ trống
+- [ ] B3 Hero: lớp nền tối cố định sau cụm chữ — kiểm tra: ảnh chụp, chữ rõ khi có mây/mưa
+- [ ] B4 Chip cảnh báo mưa lớn trên thanh trên (mọi tab), bấm để về Tính toán — kiểm tra: ngưỡng thử hạ thấp thì chip hiện
+- [ ] B5 Chữ tối thiểu 12 px — kiểm tra: `grep -n "11.0" crates/app/src` không còn cỡ chữ 11
+- [ ] B6 Bảng Số liệu chi tiết + Kết luận đặt ngay dưới thẻ thời tiết, biểu đồ/radar xuống dưới; chú thích biểu đồ không chỉ dựa vào rê chuột
+- [ ] B7 Hộp thoại theo palette (nút chính cam, nút Thoát màu lỗi, Esc đóng) và tab hiện phím tắt ngay trên nhãn
+- [ ] B8 Thẻ ngày cao bằng nhau khi hẹp; nhãn xác suất đổi thành "Khả năng mưa tối đa" (đặc tả 3: lấy `pop` lớn nhất, KHÔNG đổi công thức)
+- [ ] B9 Chụp lại 900×600 và 1100×720, sáng và tối; cập nhật MAP.md nếu có file mới
+
 ### Giai đoạn 5 — Đóng gói, CI
 
 ## Đang làm

@@ -93,7 +93,7 @@ pub fn rain_chart(ui: &mut egui::Ui, p: &Palette, day_labels: &[String], series:
                         ui.label(&s.label);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| match s.values.get(di).copied().flatten() {
                             Some(v) if v >= threshold_mm => {
-                                ui.label(RichText::new(format!("⚠ {} mm", format_vn(v, 1))).strong().color(p.error));
+                                crate::paint::note(ui, crate::paint::Icon::Warn, p.error, 13.0, RichText::new(format!("{} mm", format_vn(v, 1))).strong());
                             }
                             Some(v) => {
                                 ui.label(RichText::new(format!("{} mm", format_vn(v, 1))).strong());

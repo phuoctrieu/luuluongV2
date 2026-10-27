@@ -250,7 +250,7 @@ impl App {
             pill("© OpenStreetMap · Radar: RainViewer", rect.right_bottom() - Vec2::new(4.0, 4.0), true);
             if frame.is_none() {
                 let msg = match (&self.radar.error, self.radar.loading) {
-                    (Some(e), _) => format!("⚠ {e}"),
+                    (Some(e), _) => format!("Lỗi radar: {e}"),
                     (None, true) => "Đang tải radar mưa…".to_owned(),
                     (None, false) => "Chưa có dữ liệu radar.".to_owned(),
                 };
