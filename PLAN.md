@@ -28,6 +28,11 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [x] Radar mưa: RainViewer (6 khung, 10 phút/khung) trên nền OpenStreetMap, ghép 3×3 tile zoom 7 quanh nhà máy, phát lại tự động, cache tile 14 ngày; đã gọi dịch vụ thật (test `--ignored live_radar`). Bản release 6,5 MB
 - [ ] CHƯA nhìn thấy bằng mắt: thẻ thời tiết/radar/biểu đồ mới, màn hình Lịch sử và Cài đặt (chỉ có test logic + build); cần chạy `cargo run -p app` và thử từng thẻ (cờ dev `--tab=history|settings`)
 - [ ] Chưa thử lưu/đọc API key thật trong Keychain; chưa thử nạp bảng ngoài trên giao diện
+### Giai đoạn 4b — Chỉnh bố cục theo `UI_LAYOUT_REDESIGN.md`
+- [x] Đối chiếu đặc tả với màn hình đã làm: đã có (hai cột, radar, 5 ngày, biểu đồ, kết luận, bảng) → giữ; sửa (nút, nhóm xả nước, thẻ kết quả, trạng thái thời tiết, thẻ cảnh báo) → xong; bỏ qua (responsive điện thoại, spinner tính vì phép tính tức thời, ngưỡng cấu hình riêng vì đã dùng `rain_alert_mm`)
+- [x] Sửa nhóm 3, 4, 5.1, 7.2 (test + clippy pass; CHƯA nhìn bằng mắt, cần `cargo run -p app`) — còn lại để xem sau khi duyệt hình: nav (2.1), nhập liệu + nút (3), kết quả (4), thẻ thời tiết/radar/dự báo (5–6), so sánh mưa + cảnh báo (7), trạng thái dữ liệu (10) — kiểm tra: `cargo test --workspace`, clippy sạch, T1–T6 pass, chụp ảnh 900×600 và 4K sáng/tối
+- [ ] Nghiệm thu theo mục 13 (bỏ mục JavaScript/điện thoại vì app native desktop)
+
 ### Giai đoạn 5 — Đóng gói, CI
 
 ## Đang làm

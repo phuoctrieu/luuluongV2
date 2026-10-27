@@ -25,4 +25,5 @@
 - `crates/storage/` — `luuluong-storage`: `config.rs`, `history.rs` (SQLite), `csv_export.rs`, `secret.rs` (Keychain), `table_loader.rs` (CSV/XLSX); `tests/data/tinhtoan.xlsx` là bảng của bản cũ để đối chiếu
 - `crates/app/src/settings.rs` — kiểm tra biểu mẫu Cài đặt; `history_screen.rs`, `settings_screen.rs` — hai màn hình mới
 - `crates/weather/src/radar.rs` — radar mưa: khung RainViewer, tile OSM (cache đĩa), toán tile, giải mã PNG
+- `UI_LAYOUT_REDESIGN.md` — đặc tả chỉnh sửa bố cục giao diện (v1.0), chỉ đổi cách trình bày, giữ nguyên logic
 - `crates/app/src/paint.rs` — biểu tượng + hiệu ứng thời tiết vẽ bằng code; `chart.rs` — biểu đồ cột so sánh nguồn; `radar_screen.rs` — thẻ radar mưa

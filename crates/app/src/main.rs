@@ -13,7 +13,7 @@ use app::theme::{self, Palette};
 use app::view;
 use eframe::egui::{self, Align, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Margin, Modifiers, RichText, Stroke};
 use luuluong_core::validate::format_vn;
-use luuluong_core::{compute, CalcError, Outputs, Turbine, VolumeTable};
+use luuluong_core::{compute, CalcError, Inputs, Outputs, Turbine, VolumeTable};
 use luuluong_storage::config::Config;
 use luuluong_storage::history::{vn_timestamp, History, Record};
 use luuluong_storage::secret::{KeyringStore, SecretStore};
@@ -96,6 +96,8 @@ struct App {
     turbine: Turbine,
     form: Form,
     result: Option<Outputs>,
+    /// Đầu vào và thời điểm của kết quả đang hiện (để hiển thị đúng điều đã tính).
+    calc_meta: Option<(Inputs, String)>,
     submitted: bool,
     tab: Tab,
     show_spill: bool,
@@ -189,6 +191,7 @@ impl App {
             turbine: Turbine { q_h1: config.turbine.q_h1, q_h2: config.turbine.q_h2 },
             form: Form::default(),
             result: None,
+            calc_meta: None,
             submitted: false,
             tab,
             show_spill: false,
@@ -321,6 +324,7 @@ impl App {
         match validate(&self.form, &self.table) {
             Ok(inputs) => {
                 self.result = compute(&self.table, &self.turbine, &inputs).ok();
+                self.calc_meta = self.result.is_some().then(|| (inputs, vn_timestamp(unix_now())));
                 if let (Some(o), Some(h)) = (&self.result, &self.history) {
                     let record = Record {
                         id: 0,
@@ -361,6 +365,7 @@ impl App {
     fn clear(&mut self) {
         self.form.clear();
         self.result = None;
+        self.calc_meta = None;
         self.submitted = false;
     }
 
@@ -560,20 +565,30 @@ impl App {
                     });
                 }
                 ui.add_space(4.0);
-                ui.collapsing(RichText::new("Xả nước (không bắt buộc)").size(13.0), |ui| {
-                    for f in [Field::SpillQ, Field::SpillH, Field::EcoQ] {
-                        enter_pressed |= self.input_row(ui, p, f, &errors, &hint);
-                    }
+                let spill_filled = [Field::SpillQ, Field::SpillH, Field::EcoQ].iter().any(|f| !self.form.get(*f).trim().is_empty());
+                let mut spill = egui::CollapsingHeader::new(RichText::new("Thông số xả nước (không bắt buộc)").font(FontId::new(13.0, theme::semibold())).color(p.primary))
+                    .default_open(spill_filled);
+                if std::mem::take(&mut self.show_spill) {
+                    spill = spill.open(Some(true));
+                }
+                spill.show(ui, |ui| {
+                    ui.columns(2, |cols| {
+                        enter_pressed |= self.input_row(&mut cols[0], p, Field::SpillQ, &errors, &hint);
+                        enter_pressed |= self.input_row(&mut cols[1], p, Field::SpillH, &errors, &hint);
+                    });
+                    enter_pressed |= self.input_row(ui, p, Field::EcoQ, &errors, &hint);
                 });
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    let calc = egui::Button::new(RichText::new("TÍNH").font(FontId::new(15.0, theme::semibold())).color(p.on_accent))
+                    let size = egui::vec2(140.0, 44.0);
+                    let calc = egui::Button::new(RichText::new("TÍNH TOÁN").font(FontId::new(15.0, theme::semibold())).color(p.on_accent))
                         .fill(p.accent)
-                        .min_size(egui::vec2(120.0, 44.0));
+                        .min_size(size);
                     if ui.add(calc).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         self.try_compute();
                     }
-                    if ui.add(egui::Button::new("Xóa các ô").min_size(egui::vec2(0.0, 44.0))).on_hover_text("Ctrl/Cmd + Backspace").clicked() {
+                    let clear = egui::Button::new(RichText::new("XÓA DỮ LIỆU").font(FontId::new(15.0, theme::semibold()))).min_size(size);
+                    if ui.add(clear).on_hover_text("Chỉ xóa các ô nhập, không xóa lịch sử. Ctrl/Cmd + Backspace").clicked() {
                         self.clear();
                     }
                 });
@@ -631,14 +646,10 @@ impl App {
                 if ui.add_enabled(can, egui::Button::new(label)).on_hover_text("Ctrl/Cmd + R (tối đa 1 lần / 30 giây)").clicked() {
                     self.refresh_manually(&ctx);
                 }
-                if let Some((_, snap, stale)) = &used {
-                    let label = format!("{} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, *stale));
-                    ui.label(RichText::new(label).size(11.0).color(p.muted));
-                }
             });
         });
         ui.add_space(4.0);
-        let Some((used_source, snap, _)) = used else {
+        let Some((used_source, snap, stale)) = used else {
             card(p).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if self.loading {
@@ -661,6 +672,21 @@ impl App {
             ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
         }
         self.weather_hero(ui, &snap);
+        ui.add_space(4.0);
+        let error = self.primary_state().and_then(|s| s.error.as_ref());
+        let (status, color) = if self.loading {
+            ("Đang tải…".to_string(), p.muted)
+        } else if let Some(e) = error {
+            (format!("⚠ Cập nhật thất bại ({e}), đang hiện dữ liệu cũ"), p.error)
+        } else if stale {
+            ("⚠ Dữ liệu cũ".to_string(), p.accent_text)
+        } else {
+            ("✓ Đã cập nhật".to_string(), p.primary)
+        };
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(format!("Nguồn: {} · {}", snap.source, view::updated_label(snap.fetched_at, snap.tz_offset, stale))).size(12.0).color(p.muted));
+            ui.label(RichText::new(status).font(FontId::new(12.0, theme::semibold())).color(color));
+        });
         ui.add_space(8.0);
         self.radar_card(ui, p);
         ui.add_space(8.0);
@@ -762,10 +788,34 @@ impl App {
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
             title(ui, p, "So sánh dự báo mưa giữa các nguồn");
-            if let Some(top) = verdicts.iter().rev().max_by_key(|v| rank(v.level)) {
-                ui.add_space(4.0);
-                ui.label(RichText::new(format!("{} Cần chú ý: {}", symbol(top.level), top.text)).font(FontId::new(14.0, theme::semibold())).color(color(top.level)));
-            }
+            ui.add_space(6.0);
+            let top = verdicts.iter().rev().max_by_key(|v| rank(v.level));
+            let (heading, body) = match top {
+                Some(v) if v.level != view::Agreement::Single => (
+                    match v.level {
+                        view::Agreement::Heavy => "CẢNH BÁO: CÓ NGUỒN BÁO MƯA LỚN",
+                        view::Agreement::Differ => "BẤT ĐỒNG LỚN GIỮA CÁC NGUỒN",
+                        _ => "BÌNH THƯỜNG: CÁC NGUỒN TƯƠNG ĐỐI ĐỒNG THUẬN",
+                    },
+                    Some(v),
+                ),
+                _ => ("CHƯA ĐỦ DỮ LIỆU ĐÁNH GIÁ", None),
+            };
+            let level = body.map_or(view::Agreement::Single, |v| v.level);
+            let tint = color(level);
+            Frame::new()
+                .fill(tint.gamma_multiply(0.12))
+                .stroke(Stroke::new(1.0, tint))
+                .corner_radius(CornerRadius::same(8))
+                .inner_margin(Margin::same(12))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(RichText::new(format!("{} {heading}", symbol(level))).font(FontId::new(13.0, theme::semibold())).color(tint));
+                    if let Some(v) = body {
+                        ui.label(RichText::new(&v.text).size(13.0).color(p.text));
+                    }
+                });
+            ui.add_space(6.0);
             ui.label(
                 RichText::new(format!(
                     "Mỗi cột là lượng mưa dự kiến cả ngày của một nguồn (số trên đầu cột, đơn vị mm). Vạch đỏ nét đứt là ngưỡng cảnh báo mưa lớn ({} mm).",
@@ -782,12 +832,12 @@ impl App {
                 }
             }
             ui.add_space(6.0);
-            ui.collapsing(RichText::new("Kết luận từng ngày").size(13.0), |ui| {
+            egui::CollapsingHeader::new(RichText::new("Kết luận từng ngày").font(FontId::new(13.0, theme::semibold())).color(p.primary)).default_open(true).show(ui, |ui| {
                 for v in &verdicts {
                     ui.label(RichText::new(format!("{} {}", symbol(v.level), v.text)).size(12.0).color(color(v.level)));
                 }
             });
-            ui.collapsing(RichText::new("Bảng số liệu chi tiết").size(13.0), |ui| {
+            egui::CollapsingHeader::new(RichText::new("Bảng số liệu chi tiết").font(FontId::new(13.0, theme::semibold())).color(p.primary)).default_open(true).show(ui, |ui| {
                 self.comparison_table(ui, p, &dates);
             });
         });
@@ -890,34 +940,59 @@ impl App {
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.set_min_height(160.0);
-            title(ui, p, "Kết quả");
+            title(ui, p, "Kết quả tính toán");
             ui.add_space(8.0);
-            let Some(o) = &self.result else {
-                ui.label(RichText::new("Nhập thông số ở bên trái rồi nhấn TÍNH (hoặc Enter).").color(p.muted));
+            let (Some(o), Some((inp, at))) = (&self.result, &self.calc_meta) else {
+                ui.label(RichText::new("Chưa có kết quả. Nhập thông số ở trên rồi nhấn TÍNH TOÁN (hoặc Enter).").color(p.muted));
                 return;
             };
+            ui.label(RichText::new("LƯU LƯỢNG VỀ HỒ").font(FontId::new(12.0, theme::semibold())).color(p.muted));
             ui.horizontal(|ui| {
                 ui.label(RichText::new(format_vn(o.q_in, 2)).font(FontId::new(44.0, theme::semibold())).color(p.accent_text));
                 ui.label(RichText::new("m³/s").size(16.0).color(p.muted));
             });
-            ui.label(RichText::new(format!("Tổng lượng nước về hồ: {} m³", format_vn(o.w_in, 2))).size(15.0));
-            ui.add_space(12.0);
-            egui::Grid::new("breakdown").num_columns(2).spacing([24.0, 6.0]).show(ui, |ui| {
-                for (name, v) in [
-                    ("V đầu", o.v_start),
-                    ("V cuối", o.v_end),
-                    ("ΔV (cuối − đầu)", o.delta_v),
-                    ("V qua tuabin", o.v_turbine),
-                    ("V xả", o.v_release),
-                ] {
-                    ui.label(RichText::new(name).color(p.muted));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(format!("{} m³", format_vn(v, 2)));
-                    });
-                    ui.end_row();
+            ui.add_space(8.0);
+            ui.columns(3, |cols| {
+                for (col, (name, value, unit)) in cols.iter_mut().zip([
+                    ("TỔNG LƯỢNG NƯỚC VỀ HỒ", format_vn(o.w_in, 2), "m³"),
+                    ("MỰC NƯỚC ĐẦU", format_vn(inp.z_start, 2), "m"),
+                    ("MỰC NƯỚC CUỐI", format_vn(inp.z_end, 2), "m"),
+                ]) {
+                    col.label(RichText::new(name).font(FontId::new(11.0, theme::semibold())).color(p.muted));
+                    col.label(RichText::new(format!("{value} {unit}")).font(FontId::new(15.0, theme::semibold())));
                 }
             });
-            ui.add_space(12.0);
+            ui.add_space(8.0);
+            egui::CollapsingHeader::new(RichText::new("Thông tin chi tiết").font(FontId::new(13.0, theme::semibold())).color(p.primary))
+                .default_open(true)
+                .show(ui, |ui| {
+                    let spill = if inp.spill_q > 0.0 && inp.spill_h > 0.0 {
+                        format!("{} m³/s × {} giờ", format_vn(inp.spill_q, 2), format_vn(inp.spill_h, 2))
+                    } else {
+                        "không xả tràn".into()
+                    };
+                    let eco = if inp.eco_q > 0.0 { format!("{} m³/s", format_vn(inp.eco_q, 2)) } else { "không có".into() };
+                    egui::Grid::new("breakdown").num_columns(2).spacing([24.0, 6.0]).show(ui, |ui| {
+                        for (name, v) in [
+                            ("Thời gian tính", format!("{} giờ", format_vn(inp.hours, 2))),
+                            ("Giờ chạy máy H1", format!("{} giờ", format_vn(inp.h1, 2))),
+                            ("Giờ chạy máy H2", format!("{} giờ", format_vn(inp.h2, 2))),
+                            ("Xả tràn", spill),
+                            ("Xả dòng chảy tối thiểu", eco),
+                            ("V đầu", format!("{} m³", format_vn(o.v_start, 2))),
+                            ("V cuối", format!("{} m³", format_vn(o.v_end, 2))),
+                            ("ΔV (cuối − đầu)", format!("{} m³", format_vn(o.delta_v, 2))),
+                            ("V qua tuabin", format!("{} m³", format_vn(o.v_turbine, 2))),
+                            ("V xả", format!("{} m³", format_vn(o.v_release, 2))),
+                            ("Thời điểm tính toán", at.clone()),
+                        ] {
+                            ui.label(RichText::new(name).color(p.muted));
+                            ui.label(v);
+                            ui.end_row();
+                        }
+                    });
+                });
+            ui.add_space(8.0);
             if ui.button("Sao chép kết quả").clicked() {
                 ui.ctx().copy_text(format!(
                     "Lưu lượng nước về hồ: {} m³/s\nTổng lượng nước về hồ: {} m³",
