@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/weather", "crates/app"]
+members = ["crates/core", "crates/weather", "crates/storage", "crates/app"]
 
 [profile.release]
 opt-level = "s"
