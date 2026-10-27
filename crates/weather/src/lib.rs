@@ -7,6 +7,7 @@ pub mod free;
 pub mod openmeteo;
 pub mod multi;
 pub mod provider;
+pub mod radar;
 pub mod source;
 
 pub use error::WeatherError;

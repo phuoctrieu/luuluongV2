@@ -130,6 +130,25 @@ pub fn verdict(day: &str, rains: &[(&str, f64)], threshold_mm: f64) -> Verdict {
     }
 }
 
+/// "vừa xong", "20 phút trước", "2 giờ trước" cho khung radar có thời điểm `frame_time`.
+pub fn age_label(frame_time: i64, now: i64) -> String {
+    let minutes = (now - frame_time).max(0) / 60;
+    match minutes {
+        0 => "vừa xong".into(),
+        1..=89 => format!("{minutes} phút trước"),
+        _ => format!("{} giờ trước", minutes / 60),
+    }
+}
+
+/// Khung radar kế tiếp khi phát tự động: quay vòng về khung đầu sau khung cuối.
+pub fn next_frame(index: usize, len: usize) -> usize {
+    if len == 0 {
+        0
+    } else {
+        (index + 1) % len
+    }
+}
+
 /// Một nguồn trên biểu đồ cột: giá trị mưa theo từng ngày (`None` nếu nguồn không có ngày đó).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Series {
@@ -323,5 +342,25 @@ mod tests {
         let out = rain_series(&dates, &[("A", &a), ("B", &b)]);
         assert_eq!(out[0], Series { label: "A".into(), values: vec![Some(1.0), Some(2.0), Some(3.0)] });
         assert_eq!(out[1], Series { label: "B".into(), values: vec![None, Some(9.0), None] });
+    }
+
+    #[test]
+    fn radar_age_labels() {
+        let now = 1_000_000;
+        assert_eq!(age_label(now, now), "vừa xong");
+        assert_eq!(age_label(now - 59, now), "vừa xong");
+        assert_eq!(age_label(now - 600, now), "10 phút trước");
+        assert_eq!(age_label(now - 3600, now), "60 phút trước");
+        assert_eq!(age_label(now - 90 * 60, now), "1 giờ trước");
+        assert_eq!(age_label(now - 3 * 3600, now), "3 giờ trước");
+        assert_eq!(age_label(now + 500, now), "vừa xong"); // đồng hồ lệch
+    }
+
+    #[test]
+    fn playback_loops_and_handles_empty() {
+        assert_eq!(next_frame(0, 6), 1);
+        assert_eq!(next_frame(5, 6), 0);
+        assert_eq!(next_frame(0, 1), 0);
+        assert_eq!(next_frame(0, 0), 0);
     }
 }

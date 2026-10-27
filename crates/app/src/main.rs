@@ -24,6 +24,7 @@ use luuluong_weather::openmeteo::{Model, OpenMeteoProvider};
 use luuluong_weather::{cache, Snapshot, Source, WeatherError};
 
 mod history_screen;
+mod radar_screen;
 mod settings_screen;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -122,6 +123,7 @@ struct App {
     history_confirm_delete: Option<i64>,
     /// Lỗi ghi/đọc lịch sử: chỉ cảnh báo nhỏ, không chặn kết quả.
     storage_warning: Option<String>,
+    radar: radar_screen::RadarState,
     export_notice: Option<String>,
     settings: SettingsForm,
     settings_errors: Vec<SettingsError>,
@@ -160,6 +162,7 @@ impl App {
             std::fs::create_dir_all(d).ok()?;
             History::open(&d.join("history.db")).map_err(|e| storage_warning = Some(e.to_string())).ok()
         });
+        let (lat, lon) = (config.weather.lat, config.weather.lon);
         let secrets = KeyringStore::new("luuluong", "openweather-api-key").ok();
         // Key trong Keychain/Credential Manager; biến môi trường chỉ để dev/test.
         let api_key = secrets
@@ -212,6 +215,7 @@ impl App {
             history_dirty: true,
             history_confirm_delete: None,
             storage_warning,
+            radar: radar_screen::RadarState::new(lat, lon, dirs.as_ref().map(|d| d.cache_dir().join("tiles"))),
             export_notice: None,
             settings_errors: Vec::new(),
             settings_notice: None,
@@ -298,6 +302,7 @@ impl App {
     fn refresh_manually(&mut self, ctx: &egui::Context) {
         if !self.loading && self.scheduler.manual_allowed(unix_now()) {
             self.start_fetch(ctx);
+            self.radar_refresh(ctx);
         }
     }
 
@@ -418,6 +423,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let p = theme::palette(ctx);
         self.poll_weather(ctx);
+        self.radar_tick(ctx);
 
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             if self.form.is_empty() || self.result.is_some() {
@@ -655,6 +661,8 @@ impl App {
             ui.label(RichText::new(format!("⚠ Nguồn chính chưa có dữ liệu{why} Đang hiện {}.", snap.source)).size(12.0).color(p.error));
         }
         self.weather_hero(ui, &snap);
+        ui.add_space(8.0);
+        self.radar_card(ui, p);
         ui.add_space(8.0);
         self.forecast_strip(ui, p, &snap, used_source);
     }
