@@ -13,19 +13,44 @@ fn error_for(errors: &[SettingsError], f: SettingsField) -> Option<&str> {
     errors.iter().find(|e| e.field == f).map(|e| e.message.as_str())
 }
 
-fn text_row(ui: &mut egui::Ui, p: &Palette, label: &str, unit: &str, value: &mut String, error: Option<&str>) {
-    ui.label(RichText::new(label).size(13.0));
-    ui.horizontal(|ui| {
-        let r = ui.add(egui::TextEdit::singleline(value).desired_width(160.0).margin(Margin::symmetric(8, 8)));
-        if error.is_some() {
-            ui.painter().rect_stroke(r.rect, egui::CornerRadius::same(8), egui::Stroke::new(1.5, p.error), egui::StrokeKind::Outside);
-        }
-        ui.label(RichText::new(unit).color(p.muted));
+/// Lưới hai cột "nhãn | ô nhập", cùng kiểu với form Tính toán.
+fn form_grid(id: &str) -> egui::Grid {
+    egui::Grid::new(id).num_columns(2).min_col_width(240.0).spacing([12.0, 10.0])
+}
+
+/// Một hàng của `form_grid`: nhãn lùi xuống `pad` px cho thẳng hàng với chữ trong ô, `cell` là phần bên phải.
+fn form_row_padded(ui: &mut egui::Ui, label: &str, pad: f32, cell: impl FnOnce(&mut egui::Ui)) {
+    ui.vertical(|ui| {
+        ui.add_space(pad);
+        ui.label(RichText::new(label).size(14.0));
     });
-    if let Some(e) = error {
-        app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new(e.to_string()));
-    }
-    ui.add_space(6.0);
+    ui.vertical(cell);
+    ui.end_row();
+}
+
+/// Hàng có ô nhập (cao hơn ô chọn nên nhãn lùi xuống nhiều hơn).
+fn form_row(ui: &mut egui::Ui, label: &str, cell: impl FnOnce(&mut egui::Ui)) {
+    form_row_padded(ui, label, 8.0, cell);
+}
+
+/// Hàng có ô chọn (combo).
+fn form_row_combo(ui: &mut egui::Ui, label: &str, cell: impl FnOnce(&mut egui::Ui)) {
+    form_row_padded(ui, label, 2.0, cell);
+}
+
+fn text_row(ui: &mut egui::Ui, p: &Palette, label: &str, unit: &str, value: &mut String, error: Option<&str>) {
+    form_row(ui, label, |ui| {
+        ui.horizontal(|ui| {
+            let r = ui.add(egui::TextEdit::singleline(value).desired_width(160.0).margin(Margin::symmetric(8, 8)));
+            if error.is_some() {
+                ui.painter().rect_stroke(r.rect, egui::CornerRadius::same(8), egui::Stroke::new(1.5, p.error), egui::StrokeKind::Outside);
+            }
+            ui.label(RichText::new(unit).color(p.muted));
+        });
+        if let Some(e) = error {
+            app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new(e.to_string()));
+        }
+    });
 }
 
 impl App {
@@ -102,8 +127,10 @@ impl App {
             ui.set_width(ui.available_width());
             title(ui, p, "Tổ máy");
             ui.add_space(8.0);
-            text_row(ui, p, "Lưu lượng mỗi giờ chạy máy H1", "m³/s", &mut self.settings.q_h1, error_for(&errors, SettingsField::QH1));
-            text_row(ui, p, "Lưu lượng mỗi giờ chạy máy H2", "m³/s", &mut self.settings.q_h2, error_for(&errors, SettingsField::QH2));
+            form_grid("turbine").show(ui, |ui| {
+                text_row(ui, p, "Lưu lượng mỗi giờ chạy máy H1", "m³/s", &mut self.settings.q_h1, error_for(&errors, SettingsField::QH1));
+                text_row(ui, p, "Lưu lượng mỗi giờ chạy máy H2", "m³/s", &mut self.settings.q_h2, error_for(&errors, SettingsField::QH2));
+            });
         });
         ui.add_space(12.0);
 
@@ -111,14 +138,17 @@ impl App {
             ui.set_width(ui.available_width());
             title(ui, p, "Thời tiết");
             ui.add_space(8.0);
-            ui.label(RichText::new("Nguồn chính (các thẻ ngày)").size(13.0));
-            egui::ComboBox::from_id_salt("source").selected_text(self.settings.source.label()).width(320.0).show_ui(ui, |ui| {
-                for s in Source::ALL {
-                    ui.selectable_value(&mut self.settings.source, s, s.label());
-                }
+            form_grid("weather_source").show(ui, |ui| {
+                form_row_combo(ui, "Nguồn chính (các thẻ ngày)", |ui| {
+                    egui::ComboBox::from_id_salt("source").selected_text(self.settings.source.label()).width(320.0).show_ui(ui, |ui| {
+                        for s in Source::ALL {
+                            ui.selectable_value(&mut self.settings.source, s, s.label());
+                        }
+                    });
+                });
             });
             ui.add_space(8.0);
-            ui.label(RichText::new("Nguồn hiện trong bảng so sánh").size(13.0));
+            ui.label(RichText::new("Nguồn hiện trong bảng so sánh").font(FontId::new(14.0, theme::semibold())));
             for s in Source::ALL {
                 let is_primary = s == self.settings.source;
                 let mut on = is_primary || self.settings.compare.contains(&s);
@@ -136,10 +166,12 @@ Nguồn «Tổng hợp» là bản Open-Meteo pha từ chính các mô hình GFS
 Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần API key bên dưới.";
             ui.label(RichText::new(note).size(12.0).color(p.muted));
             ui.add_space(8.0);
-            text_row(ui, p, "Vĩ độ", "°", &mut self.settings.lat, error_for(&errors, SettingsField::Lat));
-            text_row(ui, p, "Kinh độ", "°", &mut self.settings.lon, error_for(&errors, SettingsField::Lon));
-            text_row(ui, p, "Làm mới sau mỗi", "phút", &mut self.settings.refresh_minutes, error_for(&errors, SettingsField::RefreshMinutes));
-            text_row(ui, p, "Cảnh báo mưa lớn từ", "mm/ngày", &mut self.settings.rain_alert_mm, error_for(&errors, SettingsField::RainAlert));
+            form_grid("weather_numbers").show(ui, |ui| {
+                text_row(ui, p, "Vĩ độ", "°", &mut self.settings.lat, error_for(&errors, SettingsField::Lat));
+                text_row(ui, p, "Kinh độ", "°", &mut self.settings.lon, error_for(&errors, SettingsField::Lon));
+                text_row(ui, p, "Làm mới sau mỗi", "phút", &mut self.settings.refresh_minutes, error_for(&errors, SettingsField::RefreshMinutes));
+                text_row(ui, p, "Cảnh báo mưa lớn từ", "mm/ngày", &mut self.settings.rain_alert_mm, error_for(&errors, SettingsField::RainAlert));
+            });
 
             ui.separator();
             ui.label(RichText::new("API key OpenWeather (lưu trong Keychain / Credential Manager)").size(13.0));
@@ -178,24 +210,28 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
             ui.set_width(ui.available_width());
             title(ui, p, "Giao diện");
             ui.add_space(8.0);
-            ui.label(RichText::new("Màu giao diện").size(13.0));
-            egui::ComboBox::from_id_salt("theme")
-                .selected_text(match self.settings.theme.as_str() {
-                    "light" => "Sáng",
-                    "dark" => "Tối",
-                    _ => "Theo hệ thống",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.settings.theme, "system".into(), "Theo hệ thống");
-                    ui.selectable_value(&mut self.settings.theme, "light".into(), "Sáng");
-                    ui.selectable_value(&mut self.settings.theme, "dark".into(), "Tối");
+            form_grid("appearance").show(ui, |ui| {
+                form_row_combo(ui, "Màu giao diện", |ui| {
+                    egui::ComboBox::from_id_salt("theme")
+                        .selected_text(match self.settings.theme.as_str() {
+                            "light" => "Sáng",
+                            "dark" => "Tối",
+                            _ => "Theo hệ thống",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.settings.theme, "system".into(), "Theo hệ thống");
+                            ui.selectable_value(&mut self.settings.theme, "light".into(), "Sáng");
+                            ui.selectable_value(&mut self.settings.theme, "dark".into(), "Tối");
+                        });
                 });
+                form_row(ui, "Tên người vận hành", |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.settings.operator).desired_width(240.0).margin(Margin::symmetric(8, 8)));
+                    ui.label(RichText::new("Ghi vào lịch sử, có thể để trống").size(12.0).color(p.muted));
+                });
+            });
             ui.add_space(8.0);
             ui.checkbox(&mut self.settings.animations, "Hiệu ứng động (mưa, mây, radar tự phát)");
             ui.label(RichText::new("Tắt nếu hiệu ứng gây khó chịu hoặc máy yếu.").size(12.0).color(p.muted));
-            ui.add_space(8.0);
-            ui.label(RichText::new("Tên người vận hành (ghi vào lịch sử, có thể để trống)").size(13.0));
-            ui.add(egui::TextEdit::singleline(&mut self.settings.operator).desired_width(240.0).margin(Margin::symmetric(8, 8)));
         });
         ui.add_space(12.0);
 

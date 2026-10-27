@@ -1,7 +1,7 @@
 //! Biểu đồ cột nhóm: mưa dự kiến theo ngày, mỗi nguồn một màu, có nhãn giá trị và vạch ngưỡng cảnh báo.
 
 use eframe::egui::{self, Color32, FontId, RichText};
-use egui_plot::{Bar, BarChart, HLine, Legend, Plot, PlotPoint, Polygon, Text};
+use egui_plot::{Bar, BarChart, HLine, Plot, PlotPoint, Polygon, Text};
 use luuluong_core::validate::format_vn;
 
 use crate::theme::Palette;
@@ -31,9 +31,25 @@ pub fn rain_chart(ui: &mut egui::Ui, p: &Palette, day_labels: &[String], series:
     let max_value = series.iter().flat_map(|s| s.values.iter().flatten()).cloned().fold(threshold_mm, f64::max);
 
     let top = max_value * 1.15;
+    // Chú giải đặt phía trên khung vẽ để không che cột hay vạch ngưỡng.
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        for (si, s) in series.iter().enumerate() {
+            let (swatch, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+            ui.painter().rect_filled(swatch, egui::CornerRadius::same(2), series_color(si));
+            ui.label(RichText::new(&s.label).size(12.0));
+            ui.add_space(10.0);
+        }
+        let (dash, _) = ui.allocate_exact_size(egui::vec2(18.0, 12.0), egui::Sense::hover());
+        let y = dash.center().y;
+        for x in [0.0, 7.0, 14.0] {
+            ui.painter().line_segment([egui::pos2(dash.left() + x, y), egui::pos2(dash.left() + x + 4.0, y)], egui::Stroke::new(2.0, p.error));
+        }
+        ui.label(RichText::new("Ngưỡng cảnh báo").size(12.0));
+    });
+    ui.add_space(4.0);
     let out = Plot::new("rain_compare")
         .height(height)
-        .legend(Legend::default())
         .allow_zoom(false)
         .allow_drag(false)
         .allow_scroll(false)

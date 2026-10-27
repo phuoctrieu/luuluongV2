@@ -8,6 +8,11 @@ pub fn vn(x: f64) -> String {
     x.to_string().replace('.', ",")
 }
 
+/// `2026-10-27T14:09:13+07:00` → `27/10/2026 14:09:13`; chuỗi không phải RFC 3339 giữ nguyên.
+pub fn display_time(iso: &str) -> String {
+    DateTime::parse_from_rfc3339(iso).map_or_else(|_| iso.to_owned(), |t| t.format("%d/%m/%Y %H:%M:%S").to_string())
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum RainAlert {
     None,
@@ -196,6 +201,16 @@ pub fn updated_label(fetched_at: i64, tz_offset: i32, stale: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_time_is_day_first_with_seconds() {
+        assert_eq!(display_time("2026-10-27T14:09:13+07:00"), "27/10/2026 14:09:13");
+    }
+
+    #[test]
+    fn display_time_keeps_unparseable_text() {
+        assert_eq!(display_time("không rõ"), "không rõ");
+    }
 
     #[test]
     fn weekdays_in_vietnamese() {

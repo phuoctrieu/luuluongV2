@@ -1155,7 +1155,7 @@ impl App {
                             ("ΔV (cuối − đầu)", format!("{} m³", format_vn(o.delta_v, 2))),
                             ("V qua tuabin", format!("{} m³", format_vn(o.v_turbine, 2))),
                             ("V xả", format!("{} m³", format_vn(o.v_release, 2))),
-                            ("Thời điểm tính toán", at.clone()),
+                            ("Thời điểm tính toán", view::display_time(at)),
                         ];
                         egui::Grid::new("breakdown").num_columns(4).spacing([16.0, 6.0]).show(ui, |ui| {
                             for pair in rows.chunks(2) {

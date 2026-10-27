@@ -208,13 +208,18 @@ impl App {
                 }
             });
             ui.add_space(4.0);
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), MAP_HEIGHT), egui::Sense::hover());
+            let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), MAP_HEIGHT), egui::Sense::hover());
+            // Lưới 3×3 tile chỉ phủ 768 px: giới hạn khung bản đồ theo đó và đặt giữa thẻ, tránh dải trống.
+            let rect = Rect::from_center_size(full.center(), Vec2::new(full.width().min(768.0), full.height().min(768.0)));
             let painter = ui.painter_at(rect);
             let sea = if dark { Color32::from_rgb(0x12, 0x1B, 0x30) } else { Color32::from_rgb(0xE6, 0xEA, 0xF0) };
             painter.rect_filled(rect, CornerRadius::same(6), sea);
 
             let (px, py) = self.radar.grid.point_px;
-            let origin = rect.center() - Vec2::new(px as f32, py as f32);
+            // Cửa sổ nhìn trượt trong vùng phủ sao cho vị trí nhà máy nằm gần giữa nhưng không lộ ngoài tile.
+            let view_left = (px as f32 - rect.width() / 2.0).clamp(0.0, 768.0 - rect.width());
+            let view_top = (py as f32 - rect.height() / 2.0).clamp(0.0, 768.0 - rect.height());
+            let origin = rect.min - Vec2::new(view_left, view_top);
             let tile_rect = |i: usize| Rect::from_min_size(origin + Vec2::new((i % 3) as f32 * 256.0, (i / 3) as f32 * 256.0), Vec2::splat(256.0));
             let base_tint = if dark { Color32::from_gray(150) } else { Color32::WHITE };
             for (i, tex) in self.radar.base.iter().enumerate() {
@@ -235,7 +240,7 @@ impl App {
             }
 
             // Vị trí nhà máy.
-            let c = rect.center();
+            let c = origin + Vec2::new(px as f32, py as f32);
             painter.circle_stroke(c, 12.0, Stroke::new(1.5, p.accent));
             painter.circle_filled(c, 6.0, p.accent);
             painter.circle_stroke(c, 6.0, Stroke::new(2.0, Color32::WHITE));
