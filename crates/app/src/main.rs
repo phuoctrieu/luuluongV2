@@ -402,13 +402,12 @@ impl App {
 fn card(p: &Palette) -> Frame {
     Frame::new()
         .fill(p.card)
-        .stroke(Stroke::new(1.0, p.border))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::same(16))
 }
 
 fn title(ui: &mut egui::Ui, p: &Palette, text: &str) {
-    ui.label(RichText::new(text).font(FontId::new(16.0, theme::semibold())).color(p.primary));
+    ui.label(RichText::new(text.to_uppercase()).font(FontId::new(13.0, theme::semibold())).color(p.primary));
 }
 
 fn field_label(f: Field) -> (&'static str, &'static str) {
@@ -725,7 +724,7 @@ impl App {
             for (col, day) in cols.iter_mut().zip(snap.days.iter().take(5)) {
                 let other_rain: Vec<f64> = others.iter().filter_map(|o| o.days.iter().find(|d| d.date == day.date)).map(|d| d.rain_mm).collect();
                 let alert = view::rain_alert(day.rain_mm, &other_rain, threshold);
-                let base = Frame::new().fill(p.card).stroke(Stroke::new(1.0, p.border)).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8));
+                let base = Frame::new().fill(p.card).corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8));
                 let frame = if alert == view::RainAlert::Primary { base.stroke(Stroke::new(2.0, p.error)) } else { base };
                 frame.show(col, |ui| {
                     ui.set_width(ui.available_width());
@@ -803,18 +802,15 @@ impl App {
             };
             let level = body.map_or(view::Agreement::Single, |v| v.level);
             let tint = color(level);
-            Frame::new()
-                .fill(tint.gamma_multiply(0.12))
-                .stroke(Stroke::new(1.0, tint))
-                .corner_radius(CornerRadius::same(8))
-                .inner_margin(Margin::same(12))
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.label(RichText::new(format!("{} {heading}", symbol(level))).font(FontId::new(13.0, theme::semibold())).color(tint));
-                    if let Some(v) = body {
-                        ui.label(RichText::new(&v.text).size(13.0).color(p.text));
-                    }
-                });
+            let callout = Frame::new().inner_margin(Margin { left: 14, right: 0, top: 2, bottom: 2 }).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(RichText::new(format!("{} {heading}", symbol(level))).font(FontId::new(12.0, theme::semibold())).color(tint));
+                if let Some(v) = body {
+                    ui.label(RichText::new(&v.text).font(FontId::new(16.0, theme::semibold())).color(p.text));
+                }
+            });
+            let r = callout.response.rect;
+            ui.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(4.0, r.height())), CornerRadius::same(2), tint);
             ui.add_space(6.0);
             ui.label(
                 RichText::new(format!(
@@ -958,8 +954,13 @@ impl App {
                     ("MỰC NƯỚC ĐẦU", format_vn(inp.z_start, 2), "m"),
                     ("MỰC NƯỚC CUỐI", format_vn(inp.z_end, 2), "m"),
                 ]) {
-                    col.label(RichText::new(name).font(FontId::new(11.0, theme::semibold())).color(p.muted));
-                    col.label(RichText::new(format!("{value} {unit}")).font(FontId::new(15.0, theme::semibold())));
+                    let tile = Frame::new().fill(p.bg).corner_radius(CornerRadius::same(6)).inner_margin(Margin::symmetric(12, 8)).show(col, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label(RichText::new(name).font(FontId::new(11.0, theme::semibold())).color(p.muted));
+                        ui.label(RichText::new(format!("{value} {unit}")).font(FontId::new(16.0, theme::semibold())));
+                    });
+                    let r = tile.response.rect;
+                    col.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(3.0, r.height())), CornerRadius::same(2), p.primary);
                 }
             });
             ui.add_space(8.0);
