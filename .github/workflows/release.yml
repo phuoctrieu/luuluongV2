@@ -1,5 +1,6 @@
 # Build hai nền tảng khi gắn thẻ phiên bản (v0.1.0...) hoặc chạy tay. Đặc tả mục 9.2.
 # Chưa ký số: không có secrets nào được dùng.
+# Chạy thử không cần thẻ: Actions → release → Run workflow (nhánh dev); gắn thẻ v* mới tạo bản phát hành.
 name: release
 
 on:
