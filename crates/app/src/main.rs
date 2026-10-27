@@ -629,8 +629,9 @@ impl App {
                         self.clear();
                     }
                 });
-                store_height(ui.ctx(), "h_input", ui.min_rect().height());
-                ui.set_min_height(stored_height(ui.ctx(), "h_result"));
+                let natural = ui.min_rect().height();
+                store_height(ui.ctx(), "h_input", natural);
+                ui.add_space((stored_height(ui.ctx(), "h_result") - natural).max(0.0));
             });
             self.result_card(&mut cols[1], p);
         });
@@ -1068,8 +1069,9 @@ impl App {
             } else {
                 ui.label(RichText::new("Chưa có kết quả. Nhập thông số bên trái rồi nhấn TÍNH TOÁN (hoặc Enter).").color(p.muted));
             }
-            store_height(ui.ctx(), "h_result", ui.min_rect().height());
-            ui.set_min_height(stored_height(ui.ctx(), "h_input"));
+            let natural = ui.min_rect().height();
+            store_height(ui.ctx(), "h_result", natural);
+            ui.add_space((stored_height(ui.ctx(), "h_input") - natural).max(0.0));
         });
     }
 }

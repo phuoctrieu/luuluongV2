@@ -81,7 +81,10 @@ pub fn install(ctx: &egui::Context) {
     }
     let prop = fonts.families.entry(FontFamily::Proportional).or_default();
     prop.insert(0, "bvp-regular".into());
-    fonts.families.insert(semibold(), vec!["bvp-semibold".into(), "bvp-regular".into()]);
+    // Giữ font dự phòng của egui để ký hiệu như ✓ → ⚠ không hiện thành "?".
+    let mut bold = vec!["bvp-semibold".to_owned()];
+    bold.extend(prop.iter().cloned());
+    fonts.families.insert(semibold(), bold);
     ctx.set_fonts(fonts);
 
     for (theme, p) in [(Theme::Light, &LIGHT), (Theme::Dark, &DARK)] {
