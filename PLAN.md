@@ -10,12 +10,15 @@ Bản Rust khớp bản Python ≤ 0,01 m³/s, ≤ 15 MB, chạy macOS + Windows
 - [x] `reservoir.rs` nội suy + `balance.rs` + `validate.rs` — kiểm tra: `cargo test` pass T1–T6
 - [x] Ca đối chiếu với bản Python — 50 ca sinh tự động pass; CÒN THIẾU 30–50 ca thật của người vận hành (đặc tả 10.1)
 ### Giai đoạn 2 — Giao diện tính toán (egui)
+- [x] Crate `app`: `form.rs` (kiểm tra theo ô, 9 test), `theme.rs` (sáng/tối, font Be Vietnam Pro), `main.rs` (màn hình Tính toán, phím tắt, xác nhận thoát)
+- [ ] Người vận hành dùng thử và đồng ý giao diện (cổng giai đoạn 2); chưa kiểm tay luồng nhập → TÍNH → kết quả, 900×600 và 4K, sáng/tối
+- [ ] Đồ thị đường đặc tính (P1, `egui_plot`) — chưa làm
 ### Giai đoạn 3 — Thời tiết
 ### Giai đoạn 4 — Lịch sử, CSV, Cài đặt
 ### Giai đoạn 5 — Đóng gói, CI
 
 ## Đang làm
-Giai đoạn 1 xong về mặt mã (25 test pass, clippy sạch). Cổng giai đoạn 1 còn chờ ca thật từ người vận hành. Tiếp theo: giai đoạn 2 (egui).
+Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được, 34 test pass; còn kiểm tay và đồ thị.
 
 ## Quyết định đã chốt
 - GUI: egui/eframe; HTTP: ureq; Lịch sử: rusqlite bundled; API key: keyring.
@@ -26,5 +29,8 @@ Giai đoạn 1 xong về mặt mã (25 test pass, clippy sạch). Cổng giai đ
 - Bảng dung tích mặc định để ở `crates/core/assets/` (không phải `app/assets/`) để `core` nhúng và test được.
 - Bản Python cũ nằm ở `../luuluong/` (giaodien.py, tinhtoan.xlsx). Bản cũ có 2 lỗi đã biết: bỏ dòng 165 m, và trả 0 khi mực nước đầu = cuối; ca đối chiếu loại các trường hợp này.
 
-## Việc cần chốt ở giai đoạn 2
+- eframe/egui 0.32.3 (không phải 0.37): máy đang dùng Rust 1.87, bản 0.37 cần 1.95. `rust-version = "1.87"` + resolver 3 để Cargo tự chọn bản tương thích. Nâng Rust rồi nâng eframe sau nếu muốn.
+- Font Be Vietnam Pro không bật được số đều (tabular) trong egui; chữ số kết quả có thể lệch nhẹ.
+
+## Việc cần chốt ở giai đoạn 2 (đã chốt: cam đậm `#B84A00` cho số kết quả giao diện sáng, 5,23:1)
 - Chọn màu nhấn giao diện sáng đạt ≥ 4,5:1 cho số kết quả (xem contexte/thiet-ke-ui.md).

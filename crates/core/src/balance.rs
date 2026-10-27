@@ -2,6 +2,7 @@ use crate::error::CalcError;
 use crate::reservoir::VolumeTable;
 
 /// Lưu lượng mỗi tổ máy (m³/s).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Turbine {
     pub q_h1: f64,
     pub q_h2: f64,
@@ -13,6 +14,7 @@ impl Default for Turbine {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Inputs {
     pub z_start: f64,
     pub z_end: f64, // m

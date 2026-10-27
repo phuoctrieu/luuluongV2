@@ -17,3 +17,5 @@
 - `crates/core/assets/volume_table.csv` — bảng dung tích 125 dòng, nhúng sẵn
 - `crates/core/tests/python_parity.rs` + `tests/data/python_cases.csv` — đối chiếu 50 ca với bản Python cũ
 - `scripts/xlsx_to_csv.py` — chuyển tinhtoan.xlsx sang CSV; `scripts/gen_python_cases.py` — sinh ca đối chiếu bằng logic Python cũ
+- `crates/app/` — ứng dụng egui `app`: `src/form.rs` (ô nhập → Inputs, lỗi theo ô), `src/theme.rs` (palette + font), `src/main.rs` (giao diện)
+- `crates/app/assets/BeVietnamPro-*.ttf` — font nhúng (SIL OFL)
