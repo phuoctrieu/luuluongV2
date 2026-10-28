@@ -87,6 +87,7 @@ mod tests {
             eco_q: 1.5,
             q_in: q,
             w_in: q * minutes as f64 * 60.0,
+            rain_mm: None,
             operator: String::new(),
             note: AUTO_NOTE.into(),
         }

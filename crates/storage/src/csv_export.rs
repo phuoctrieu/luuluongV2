@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::history::Record;
 
-const HEADER: [&str; 13] = [
+const HEADER: [&str; 14] = [
     "Thời điểm",
     "Mực nước đầu (m)",
     "Mực nước cuối (m)",
@@ -16,6 +16,7 @@ const HEADER: [&str; 13] = [
     "Xả tối thiểu (m3/s)",
     "Lưu lượng về hồ (m3/s)",
     "Tổng lượng về hồ (m3)",
+    "Lượng mưa (mm)",
     "Người nhập",
     "Ghi chú",
 ];
@@ -45,6 +46,7 @@ pub fn to_csv(records: &[Record]) -> String {
             num(r.eco_q),
             num2(r.q_in),
             num2(r.w_in),
+            r.rain_mm.map(num2).unwrap_or_default(),
             r.operator.clone(),
             r.note.clone(),
         ])
@@ -76,6 +78,7 @@ mod tests {
             eco_q: 0.0,
             q_in: 254.5155,
             w_in: 916255.1374,
+            rain_mm: None,
             operator: "Linh".into(),
             note: note.into(),
         }
@@ -88,14 +91,23 @@ mod tests {
         let header = out.trim_start_matches('\u{feff}').lines().next().unwrap();
         assert!(header.starts_with("Thời điểm;Mực nước đầu (m);Mực nước cuối (m);"));
         assert!(header.ends_with(";Người nhập;Ghi chú"));
-        assert_eq!(header.split(';').count(), 13);
+        assert_eq!(header.split(';').count(), 14);
+        assert!(header.contains(";Tổng lượng về hồ (m3);Lượng mưa (mm);Người nhập"));
     }
 
     #[test]
     fn numbers_use_decimal_comma_and_results_two_decimals() {
         let out = to_csv(&[rec("")]);
         let row = out.lines().nth(1).unwrap();
-        assert_eq!(row, "2026-10-27T10:30:00+07:00;160;161;1;0,5;0;0;0;0;254,52;916255,14;Linh;");
+        assert_eq!(row, "2026-10-27T10:30:00+07:00;160;161;1;0,5;0;0;0;0;254,52;916255,14;;Linh;");
+    }
+
+    #[test]
+    fn rain_is_written_with_two_decimals_and_left_empty_when_unknown() {
+        let mut r = rec("");
+        r.rain_mm = Some(3.456);
+        let row = to_csv(&[r]).lines().nth(1).unwrap().to_string();
+        assert!(row.contains(";916255,14;3,46;Linh;"), "{row}");
     }
 
     #[test]

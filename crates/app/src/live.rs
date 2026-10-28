@@ -2,7 +2,7 @@
 //! Thuần logic (thời gian truyền vào), không phụ thuộc giao diện.
 
 use luuluong_core::{inflow_between_levels, VolumeTable};
-use luuluong_logger::tracker::{IntervalState, LevelTracker, Mark, OutflowMean};
+use luuluong_logger::tracker::{IntervalState, LevelTracker, Mark, CycleMean};
 use luuluong_logger::{is_running, LoggerError, Reading, Status};
 use luuluong_storage::history::{vn_timestamp, Record};
 
@@ -17,7 +17,7 @@ pub struct Flow {
     /// Mực nước mốc sau trừ mốc trước (m).
     pub dz: f64,
     /// Lưu lượng tổ máy, xả môi trường trung bình và tỷ lệ thời gian chạy trong chu kỳ.
-    pub outflow: OutflowMean,
+    pub cycle: CycleMean,
     /// m³/s, đã cộng tuabin và xả môi trường đo được.
     pub q_in: f64,
 }
@@ -72,13 +72,14 @@ pub fn history_record(f: &Flow, period_minutes: u32) -> Record {
         z_start: mm(f.from.z),
         z_end: mm(f.to.z),
         hours: f64::from(period_minutes) / 60.0,
-        h1: f.outflow.run_h1 * f64::from(period_minutes) / 60.0,
-        h2: f.outflow.run_h2 * f64::from(period_minutes) / 60.0,
+        h1: f.cycle.run_h1 * f64::from(period_minutes) / 60.0,
+        h2: f.cycle.run_h2 * f64::from(period_minutes) / 60.0,
         spill_q: 0.0,
         spill_h: 0.0,
-        eco_q: f.outflow.q_eco,
+        eco_q: f.cycle.q_eco,
         q_in: f.q_in,
         w_in: f.q_in * f64::from(period_minutes) * 60.0,
+        rain_mm: f.cycle.rain_mm_h.map(|mm_h| mm_h * f64::from(period_minutes) / 60.0),
         operator: String::new(),
         note: AUTO_NOTE.into(),
     }
@@ -134,6 +135,7 @@ impl Live {
             self.machines = Some((now, Machines { h1: machine(q1), h2: machine(q2) }));
         }
         self.tracker.push_flows(now, flows);
+        self.tracker.push_rain(now, result.as_ref().ok().and_then(|r| r.rain));
         if let Some(rain) = result.as_ref().ok().and_then(|r| r.rain) {
             self.rain = Some((now, rain));
         }
@@ -181,8 +183,8 @@ impl Live {
         match self.tracker.state() {
             IntervalState::NoData => FlowView::Waiting,
             IntervalState::Missing { to } => FlowView::Missing { to },
-            IntervalState::Ready(i) => match inflow_between_levels(table, i.from.z, i.to.z, f64::from(self.period), i.outflow.q_eco, i.outflow.q_h1, i.outflow.q_h2) {
-                Ok(o) => FlowView::Ready(Flow { from: i.from, to: i.to, dz: i.to.z - i.from.z, outflow: i.outflow, q_in: o.q_in }),
+            IntervalState::Ready(i) => match inflow_between_levels(table, i.from.z, i.to.z, f64::from(self.period), i.cycle.q_eco, i.cycle.q_h1, i.cycle.q_h2) {
+                Ok(o) => FlowView::Ready(Flow { from: i.from, to: i.to, dz: i.to.z - i.from.z, cycle: i.cycle, q_in: o.q_in }),
                 Err(e) => FlowView::Invalid(e.to_string()),
             },
         }
@@ -258,10 +260,36 @@ mod tests {
 
     #[test]
     fn history_levels_are_rounded_to_a_millimetre() {
-        let outflow = OutflowMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0, q_eco: 1.5 };
-        let f = Flow { from: Mark { time: T0, z: 157.19200000000001 }, to: Mark { time: T0 + 900, z: 157.2499999999 }, dz: 0.058, outflow, q_in: 2.0 };
+        let cycle = CycleMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0, q_eco: 1.5, rain_mm_h: None };
+        let f = Flow { from: Mark { time: T0, z: 157.19200000000001 }, to: Mark { time: T0 + 900, z: 157.2499999999 }, dz: 0.058, cycle, q_in: 2.0 };
         let r = history_record(&f, 15);
         assert_eq!((r.z_start, r.z_end), (157.192, 157.25));
+    }
+
+    #[test]
+    fn history_record_converts_mean_rain_rate_to_millimetres_for_the_cycle() {
+        let mut f = Flow {
+            from: Mark { time: T0, z: 157.0 },
+            to: Mark { time: T0 + 900, z: 157.0 },
+            dz: 0.0,
+            cycle: CycleMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0, q_eco: 1.5, rain_mm_h: Some(6.0) },
+            q_in: 1.5,
+        };
+        assert_eq!(history_record(&f, 15).rain_mm, Some(1.5)); // 6 mm/h × 0,25 h
+        assert_eq!(history_record(&f, 30).rain_mm, Some(3.0));
+        f.cycle.rain_mm_h = None;
+        assert_eq!(history_record(&f, 15).rain_mm, None);
+    }
+
+    #[test]
+    fn live_cycles_carry_the_rain_gauge_into_the_flow() {
+        let mut l = Live::new(15);
+        let wet = |z| Ok(Reading { rain: Some(8.0), ..ok_with(z, 0.0, 0.0).unwrap() });
+        feed(&mut l, T0 - 120, T0 + 900 + 20, wet(157.0));
+        match l.flow(&VolumeTable::builtin()) {
+            FlowView::Ready(f) => assert!((f.cycle.rain_mm_h.unwrap() - 8.0).abs() < 1e-9),
+            v => panic!("{v:?}"),
+        }
     }
 
     #[test]
@@ -321,7 +349,7 @@ mod tests {
         match l.flow(&t) {
             FlowView::Ready(f) => {
                 assert!((f.q_in - (1.5 + 16.54)).abs() < 1e-9, "{}", f.q_in);
-                assert_eq!((f.outflow.run_h1, f.outflow.run_h2), (1.0, 0.0));
+                assert_eq!((f.cycle.run_h1, f.cycle.run_h2), (1.0, 0.0));
                 let r = history_record(&f, 15);
                 assert_eq!((r.h1, r.h2), (0.25, 0.0));
             }

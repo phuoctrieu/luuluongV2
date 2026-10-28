@@ -22,6 +22,8 @@ pub struct Record {
     pub eco_q: f64,
     pub q_in: f64,
     pub w_in: f64,
+    /// Lượng mưa tại trạm trong chu kỳ (mm); `None` nếu không đo (dòng tính tay, dòng cũ, thiếu số liệu mưa).
+    pub rain_mm: Option<f64>,
     pub operator: String,
     pub note: String,
 }
@@ -56,12 +58,13 @@ CREATE TABLE IF NOT EXISTS calc (
     eco_q      REAL NOT NULL,
     q_in       REAL NOT NULL,
     w_in       REAL NOT NULL,
+    rain_mm    REAL,
     operator   TEXT NOT NULL DEFAULT '',
     note       TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_calc_created ON calc(created_at);";
 
-const COLUMNS: &str = "id, created_at, z_start, z_end, hours, h1, h2, spill_q, spill_h, eco_q, q_in, w_in, operator, note";
+const COLUMNS: &str = "id, created_at, z_start, z_end, hours, h1, h2, spill_q, spill_h, eco_q, q_in, w_in, operator, note, rain_mm";
 
 fn record_from_row(row: &rusqlite::Row) -> rusqlite::Result<Record> {
     Ok(Record {
@@ -79,6 +82,7 @@ fn record_from_row(row: &rusqlite::Row) -> rusqlite::Result<Record> {
         w_in: row.get(11)?,
         operator: row.get(12)?,
         note: row.get(13)?,
+        rain_mm: row.get(14)?,
     })
 }
 
@@ -93,16 +97,21 @@ impl History {
 
     fn init(conn: Connection) -> Result<History, StorageError> {
         conn.execute_batch(SCHEMA)?;
+        // Cơ sở dữ liệu tạo trước khi có cột mưa: thêm cột, giữ nguyên các dòng cũ.
+        let has_rain: bool = conn.prepare("SELECT 1 FROM pragma_table_info('calc') WHERE name = 'rain_mm'")?.exists([])?;
+        if !has_rain {
+            conn.execute_batch("ALTER TABLE calc ADD COLUMN rain_mm REAL")?;
+        }
         Ok(History { conn })
     }
 
     pub fn insert(&self, r: &Record) -> Result<i64, StorageError> {
         self.conn.execute(
-            "INSERT INTO calc (created_at, z_start, z_end, hours, h1, h2, spill_q, spill_h, eco_q, q_in, w_in, operator, note)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO calc (created_at, z_start, z_end, hours, h1, h2, spill_q, spill_h, eco_q, q_in, w_in, operator, note, rain_mm)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 r.created_at, r.z_start, r.z_end, r.hours, r.h1, r.h2, r.spill_q, r.spill_h, r.eco_q, r.q_in, r.w_in,
-                r.operator, r.note
+                r.operator, r.note, r.rain_mm
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -150,6 +159,7 @@ mod tests {
             eco_q: 0.0,
             q_in: q,
             w_in: q * 3600.0,
+            rain_mm: None,
             operator: "Linh".into(),
             note: String::new(),
         }
@@ -173,6 +183,39 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, id);
         assert_eq!(rows[0], Record { id, ..rec("2026-10-27T10:30:00+07:00", 254.52) });
+    }
+
+    #[test]
+    fn rain_roundtrips_and_unknown_stays_none() {
+        let h = History::open_in_memory().unwrap();
+        h.insert(&Record { rain_mm: Some(3.5), ..rec("2026-10-28T10:00:00+07:00", 1.0) }).unwrap();
+        h.insert(&rec("2026-10-28T11:00:00+07:00", 2.0)).unwrap();
+        let v: Vec<_> = h.list(None).unwrap().iter().map(|r| r.rain_mm).collect();
+        assert_eq!(v, vec![None, Some(3.5)]);
+    }
+
+    #[test]
+    fn opening_a_database_from_before_rain_adds_the_column_and_keeps_old_rows() {
+        let path = std::env::temp_dir().join(format!("luuluong-migrate-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(
+                "CREATE TABLE calc (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, z_start REAL NOT NULL, z_end REAL NOT NULL,
+                 hours REAL NOT NULL, h1 REAL NOT NULL, h2 REAL NOT NULL, spill_q REAL NOT NULL, spill_h REAL NOT NULL, eco_q REAL NOT NULL,
+                 q_in REAL NOT NULL, w_in REAL NOT NULL, operator TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '');
+                 INSERT INTO calc (created_at,z_start,z_end,hours,h1,h2,spill_q,spill_h,eco_q,q_in,w_in) VALUES ('2026-10-28T11:00:00+07:00',157.192,157.197,0.25,0.25,0,0,0,1.5,22.2,19980);",
+            )
+            .unwrap();
+        }
+        let h = History::open(&path).unwrap();
+        let old = h.list(None).unwrap();
+        assert_eq!((old.len(), old[0].rain_mm, old[0].q_in), (1, None, 22.2));
+        h.insert(&Record { rain_mm: Some(1.25), ..rec("2026-10-28T12:00:00+07:00", 3.0) }).unwrap();
+        drop(h);
+        let again = History::open(&path).unwrap(); // mở lần hai không báo lỗi cột đã có
+        assert_eq!(again.list(None).unwrap()[0].rain_mm, Some(1.25));
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

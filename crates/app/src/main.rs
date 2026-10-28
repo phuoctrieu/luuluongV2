@@ -361,6 +361,7 @@ impl App {
                         eco_q: inputs.eco_q,
                         q_in: o.q_in,
                         w_in: o.w_in,
+                        rain_mm: None,
                         operator: self.config.ui.operator.clone(),
                         note: String::new(),
                     };

@@ -19,7 +19,7 @@ pub struct Mark {
 
 /// Lưu lượng ra khỏi hồ trong một chu kỳ: hai tổ máy và xả môi trường.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct OutflowMean {
+pub struct CycleMean {
     /// Trung bình các lần đọc (m³/s), kể cả lúc máy dừng.
     pub q_h1: f64,
     pub q_h2: f64,
@@ -28,13 +28,15 @@ pub struct OutflowMean {
     pub run_h2: f64,
     /// Xả môi trường trung bình (m³/s).
     pub q_eco: f64,
+    /// Cường độ mưa trung bình tại trạm (mm/h); `None` nếu thiếu dữ liệu mưa (không làm chu kỳ thiếu số liệu).
+    pub rain_mm_h: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Interval {
     pub from: Mark,
     pub to: Mark,
-    pub outflow: OutflowMean,
+    pub cycle: CycleMean,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,8 +55,10 @@ pub struct LevelTracker {
     slot: Option<i64>,
     /// Lưu lượng tổ máy (giây, H1, H2) trong khoảng một chu kỳ gần đây.
     flows: VecDeque<(i64, f64, f64, f64)>,
+    /// Cường độ mưa (giây, mm/h) trong khoảng một chu kỳ gần đây.
+    rains: VecDeque<(i64, f64)>,
     /// Hai mốc gần nhất: (mốc, mực nước, lưu lượng tổ máy của chu kỳ kết thúc ở mốc) nếu chốt được.
-    marks: VecDeque<(i64, Option<f64>, Option<OutflowMean>)>,
+    marks: VecDeque<(i64, Option<f64>, Option<CycleMean>)>,
 }
 
 impl LevelTracker {
@@ -64,6 +68,7 @@ impl LevelTracker {
             samples: VecDeque::new(),
             latest: None,
             flows: VecDeque::new(),
+            rains: VecDeque::new(),
             slot: None,
             marks: VecDeque::new(),
         }
@@ -76,6 +81,16 @@ impl LevelTracker {
         }
         while self.flows.front().is_some_and(|(t, _, _, _)| *t < now - self.period_secs - WINDOW_SECS * 2) {
             self.flows.pop_front();
+        }
+    }
+
+    /// Ghi cường độ mưa (mm/h) lúc `now` (`None` nếu không có). Gọi trước `push` của cùng lần đọc.
+    pub fn push_rain(&mut self, now: i64, rain: Option<f64>) {
+        if let Some(r) = rain.filter(|r| r.is_finite() && *r >= 0.0) {
+            self.rains.push_back((now, r));
+        }
+        while self.rains.front().is_some_and(|(t, _)| *t < now - self.period_secs - WINDOW_SECS * 2) {
+            self.rains.pop_front();
         }
     }
 
@@ -92,7 +107,7 @@ impl LevelTracker {
         match self.slot {
             Some(prev) if slot > prev => {
                 let boundary = slot * self.period_secs;
-                self.marks.push_back((boundary, self.median_before(boundary), self.outflow_mean(boundary)));
+                self.marks.push_back((boundary, self.median_before(boundary), self.cycle_mean(boundary)));
                 if self.marks.len() > 2 {
                     self.marks.pop_front();
                 }
@@ -119,19 +134,19 @@ impl LevelTracker {
             return IntervalState::NoData;
         }
         let (from, z_from, _) = self.marks[0];
-        let (to, z_to, outflow) = self.marks[1];
-        match (z_from, z_to, outflow) {
-            (Some(z_from), Some(z_to), Some(outflow)) if from + self.period_secs == to => IntervalState::Ready(Interval {
+        let (to, z_to, cycle) = self.marks[1];
+        match (z_from, z_to, cycle) {
+            (Some(z_from), Some(z_to), Some(cycle)) if from + self.period_secs == to => IntervalState::Ready(Interval {
                 from: Mark { time: from, z: z_from },
                 to: Mark { time: to, z: z_to },
-                outflow,
+                cycle,
             }),
             _ => IntervalState::Missing { to },
         }
     }
 
     /// Trung bình lưu lượng tổ máy trong chu kỳ kết thúc ở `boundary`; `None` nếu dữ liệu phủ dưới 80 % chu kỳ.
-    fn outflow_mean(&self, boundary: i64) -> Option<OutflowMean> {
+    fn cycle_mean(&self, boundary: i64) -> Option<CycleMean> {
         let v: Vec<&(i64, f64, f64, f64)> = self.flows.iter().filter(|(t, _, _, _)| (boundary - self.period_secs < *t) && (*t <= boundary)).collect();
         let (first, last) = (v.first()?.0, v.last()?.0);
         if v.len() < 2 || (last - first) * 5 < self.period_secs * 4 {
@@ -139,13 +154,24 @@ impl LevelTracker {
         }
         let n = v.len() as f64;
         let share = |f: fn(&(i64, f64, f64, f64)) -> f64| v.iter().filter(|s| crate::is_running(f(s))).count() as f64 / n;
-        Some(OutflowMean {
+        Some(CycleMean {
             q_h1: v.iter().map(|s| s.1).sum::<f64>() / n,
             q_h2: v.iter().map(|s| s.2).sum::<f64>() / n,
             run_h1: share(|s| s.1),
             run_h2: share(|s| s.2),
             q_eco: v.iter().map(|s| s.3).sum::<f64>() / n,
+            rain_mm_h: self.rain_mean(boundary),
         })
+    }
+
+    /// Trung bình cường độ mưa trong chu kỳ kết thúc ở `boundary`; `None` nếu dữ liệu phủ dưới 80 % chu kỳ.
+    fn rain_mean(&self, boundary: i64) -> Option<f64> {
+        let v: Vec<&(i64, f64)> = self.rains.iter().filter(|(t, _)| (boundary - self.period_secs < *t) && (*t <= boundary)).collect();
+        let (first, last) = (v.first()?.0, v.last()?.0);
+        if v.len() < 2 || (last - first) * 5 < self.period_secs * 4 {
+            return None;
+        }
+        Some(v.iter().map(|s| s.1).sum::<f64>() / v.len() as f64)
     }
 
     fn median_before(&self, boundary: i64) -> Option<f64> {
@@ -206,7 +232,7 @@ mod tests {
             IntervalState::Ready(Interval {
                 from: Mark { time: T0, z: 157.000 },
                 to: Mark { time: T0 + P15, z: 157.050 },
-                outflow: OutflowMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0, q_eco: 1.5 },
+                cycle: CycleMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0, q_eco: 1.5, rain_mm_h: None },
             })
         );
     }
@@ -275,20 +301,20 @@ mod tests {
     }
 
     #[test]
-    fn outflow_mean_and_run_share_cover_only_the_interval() {
+    fn cycle_mean_and_run_share_cover_only_the_interval() {
         match with_h1_running_two_thirds().state() {
             IntervalState::Ready(i) => {
-                assert!((i.outflow.q_h1 - 16.0 * 120.0 / 180.0).abs() < 1e-9, "{:?}", i.outflow);
-                assert!((i.outflow.run_h1 - 120.0 / 180.0).abs() < 1e-9);
-                assert_eq!((i.outflow.q_h2, i.outflow.run_h2), (0.0, 0.0));
-                assert_eq!(i.outflow.q_eco, 1.5);
+                assert!((i.cycle.q_h1 - 16.0 * 120.0 / 180.0).abs() < 1e-9, "{:?}", i.cycle);
+                assert!((i.cycle.run_h1 - 120.0 / 180.0).abs() < 1e-9);
+                assert_eq!((i.cycle.q_h2, i.cycle.run_h2), (0.0, 0.0));
+                assert_eq!(i.cycle.q_eco, 1.5);
             }
             s => panic!("{s:?}"),
         }
     }
 
     #[test]
-    fn missing_outflow_data_makes_the_interval_missing() {
+    fn missing_cycle_data_makes_the_interval_missing() {
         let mut t = LevelTracker::new(15);
         for s in (T0 - 120..T0 + P15 + 20).step_by(5) {
             t.push(s, Some(157.0));
@@ -297,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn outflow_data_covering_under_eighty_percent_is_missing() {
+    fn cycle_data_covering_under_eighty_percent_is_missing() {
         let mut t = LevelTracker::new(15);
         feed(&mut t, T0 - 900 + 5, T0 + 1, 157.0);
         for s in (T0 + 5..T0 + P15 + 20).step_by(5) {
@@ -307,6 +333,60 @@ mod tests {
             t.push(s, Some(157.0));
         }
         assert_eq!(t.state(), IntervalState::Missing { to: T0 + P15 });
+    }
+
+    /// Chu kỳ thứ hai như `with_h1_running_two_thirds`, mưa 6 mm/h ở 2/3 đầu rồi tạnh.
+    fn with_rain_two_thirds(rain: bool) -> LevelTracker {
+        let mut t = LevelTracker::new(15);
+        feed(&mut t, T0 - 900 + 5, T0 + 1, 157.0);
+        for k in 1..=180 {
+            let now = T0 + 5 * k;
+            t.push_flows(now, Some((0.0, 0.0, 1.5)));
+            if rain {
+                t.push_rain(now, Some(if k <= 120 { 6.0 } else { 0.0 }));
+            }
+            t.push(now, Some(157.0));
+        }
+        t.push_flows(T0 + 905, Some((0.0, 0.0, 1.5)));
+        t.push(T0 + 905, Some(157.0));
+        t
+    }
+
+    #[test]
+    fn rain_rate_is_averaged_over_the_interval() {
+        match with_rain_two_thirds(true).state() {
+            IntervalState::Ready(i) => assert!((i.cycle.rain_mm_h.unwrap() - 4.0).abs() < 1e-9, "{:?}", i.cycle),
+            s => panic!("{s:?}"),
+        }
+    }
+
+    #[test]
+    fn no_rain_gauge_data_leaves_rain_unknown_but_the_interval_ready() {
+        match with_rain_two_thirds(false).state() {
+            IntervalState::Ready(i) => assert_eq!(i.cycle.rain_mm_h, None),
+            s => panic!("{s:?}"),
+        }
+    }
+
+    #[test]
+    fn rain_data_covering_under_eighty_percent_is_unknown() {
+        let mut t = with_rain_two_thirds(false);
+        // bù mưa chỉ 5 phút cuối chu kỳ rồi chốt lại bằng một mốc mới
+        let mut t2 = LevelTracker::new(15);
+        feed(&mut t2, T0 - 900 + 5, T0 + 1, 157.0);
+        for s in (T0 + 5..=T0 + P15).step_by(5) {
+            t2.push_flows(s, Some((0.0, 0.0, 1.5)));
+            if s > T0 + 600 {
+                t2.push_rain(s, Some(6.0));
+            }
+            t2.push(s, Some(157.0));
+        }
+        t2.push(T0 + P15 + 5, Some(157.0));
+        t.push(T0 + P15 + 10, Some(157.0));
+        match t2.state() {
+            IntervalState::Ready(i) => assert_eq!(i.cycle.rain_mm_h, None),
+            s => panic!("{s:?}"),
+        }
     }
 
     #[test]

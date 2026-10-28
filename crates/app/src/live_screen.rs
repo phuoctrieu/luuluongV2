@@ -195,8 +195,8 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
                         clock(f.from.time),
                         clock(f.to.time),
                         format_vn(f.dz, 3),
-                        format_vn(f.outflow.q_h1, 2),
-                        format_vn(f.outflow.q_h2, 2)
+                        format_vn(f.cycle.q_h1, 2),
+                        format_vn(f.cycle.q_h2, 2)
                     ),
                 )
             }
