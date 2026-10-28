@@ -31,7 +31,7 @@
 - `.github/workflows/release.yml` — CI macOS + Windows khi gắn thẻ `v*` (chưa chạy lần nào, chưa có remote)
 - `livrables/HUONG-DAN-MO-LAN-DAU.md` — trang hướng dẫn cài và mở lần đầu cho bản chưa ký số; file `.dmg`/`.zip` sinh ra ở đây không đưa vào Git
 - `crates/logger/` — `luuluong-logger`: đọc MNTL (kênh 16) từ data logger ECAPRO (`parse_mntl`, `fetch`, `poller.rs` luồng nền, `tracker.rs` chốt mực nước tại mốc đồng hồ)
-- `crates/app/src/averages.rs` — lưu lượng về trung bình 3 giờ … 1 năm từ lịch sử (thuần, có test)
+- `crates/app/src/averages.rs` — lưu lượng về trung bình và mưa cộng dồn 3 giờ … 1 năm, thống kê theo ngày, từ lịch sử (thuần, có test); `chart.rs` có thêm `daily_chart`
 - `crates/app/src/live.rs` — trạng thái mực nước + lưu lượng về theo chu kỳ (thuần); `live_screen.rs` — tab Hiện tại, nút lấy mực nước ở tab Tính bằng tay
 - `crates/app/build.rs` — gắn biểu tượng/thông tin vào `.exe` khi build cho Windows (`winresource`); `crates/app/assets/icon.{png,ico,icns}` — biểu tượng ứng dụng, sinh bằng `scripts/make_icon.py`
 

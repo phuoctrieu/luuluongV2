@@ -15,7 +15,7 @@ Ghi chú vận hành: q mỗi tổ máy mặc định 17,3 m³/s (cần xác nh�
 ## Khởi động lại, trung bình dài hạn, trạm mưa (2026-10-28)
 - Thiết bị chỉ trả giá trị hiện tại, không có lịch sử, nên lúc app tắt thì không có số liệu và app KHÔNG tự bù. Mở lại: bộ nhớ chu kỳ bắt đầu từ đầu, cần hai mốc đồng hồ liên tiếp (chờ tối đa 15–30 phút) mới có lưu lượng về mới. Các chu kỳ đã tính trước đó nằm trong lịch sử SQLite và vẫn dùng cho trung bình.
 - Trung bình 3 giờ, 12 giờ, 1 ngày, 1 tuần, 1 tháng (30 ngày), 1 năm (365 ngày) = bình quân theo thời gian các chu kỳ tự động đã lưu (`crates/app/src/averages.rs`), chỉ tính phần thời gian có số liệu; kèm tỷ lệ "có số liệu" của khoảng. Dòng tính tay không tính. Hai dòng chồng một chu kỳ thì giữ dòng lưu trước.
-- Trạm đo mưa: kênh 1 `LUU LUONG MUA` (mm/h), chỉ hiển thị cường độ hiện tại (chưa cộng dồn).
+- Trạm đo mưa: kênh 1 `LUU LUONG MUA` (mm/h). Mỗi chu kỳ lưu lượng mưa = cường độ trung bình × số giờ (cột `rain_mm`, NULL nếu thiếu số liệu mưa hoặc phủ dưới 80 % chu kỳ). Cộng dồn theo khoảng chỉ tính chu kỳ có số liệu mưa, kèm tỷ lệ phủ riêng; "đo được và không mưa" là 0, khác "không có số liệu" (—). Biểu đồ theo ngày dùng giờ Việt Nam; mưa trong app chỉ ghi lúc app chạy, nên không có mưa quá khứ cho giai đoạn app tắt.
 - Màn hình: tab Tính toán (số liệu trực tuyến + thời tiết), tab Tính bằng tay (nhập tay), Lịch sử, Cài đặt.
 
 ## Dữ liệu thật từ ECAPRO (curl ngày 2026-10-28)

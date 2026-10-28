@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use app::averages::{window_averages, WINDOWS};
+use app::averages::{daily_stats, window_averages, WINDOWS};
 use app::form::Field;
 use app::live::{history_record, next_boundary, FlowView, VN_TZ};
 use app::paint::{self, Icon};
@@ -12,6 +12,9 @@ use luuluong_core::validate::format_vn;
 use luuluong_logger::Status;
 
 use super::{card, theme, title, unix_now, App, Palette};
+
+/// Số ngày tối đa tải cho biểu đồ ngày.
+const MAX_DAYS: usize = 30;
 
 fn big(p: &Palette, text: String) -> RichText {
     RichText::new(text).font(FontId::new(34.0, theme::semibold())).color(p.accent_text)
@@ -102,14 +105,41 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
         self.averages_at = now;
         let Some(h) = &self.history else { return };
         match h.list_since(now - WINDOWS[WINDOWS.len() - 1].1) {
-            Ok(rows) => self.averages = window_averages(&rows, now),
+            Ok(rows) => {
+                self.averages = window_averages(&rows, now);
+                self.daily = daily_stats(&rows, now, MAX_DAYS);
+            }
             Err(e) => self.storage_warning = Some(e.to_string()),
         }
     }
 
+    /// Thẻ biểu đồ từng ngày: lưu lượng về trung bình và lượng mưa.
+    pub(super) fn daily_card(&mut self, ui: &mut egui::Ui, p: &Palette) {
+        self.refresh_averages(unix_now());
+        card(p).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                title(ui, p, "Lưu lượng về và mưa theo ngày");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    for days in [30, 14, 7] {
+                        ui.selectable_value(&mut self.daily_range, days, format!("{days} ngày"));
+                    }
+                });
+            });
+            ui.add_space(6.0);
+            let from = self.daily.len().saturating_sub(self.daily_range);
+            app::chart::daily_chart(ui, p, &self.daily[from..], 130.0);
+            ui.label(
+                RichText::new("Mỗi cột là một ngày (giờ Việt Nam). Trung bình và mưa chỉ tính phần thời gian app đã chạy và có số liệu; ngày chưa có số liệu để trống.")
+                    .size(12.0)
+                    .color(p.muted),
+            );
+        });
+    }
+
     fn averages_row(&mut self, ui: &mut egui::Ui, p: &Palette, now: i64) {
         self.refresh_averages(now);
-        ui.label(RichText::new("Lưu lượng về trung bình").font(FontId::new(13.0, theme::semibold())).color(p.primary));
+        ui.label(RichText::new("Lưu lượng về trung bình và lượng mưa cộng dồn").font(FontId::new(13.0, theme::semibold())).color(p.primary));
         ui.add_space(4.0);
         ui.columns(self.averages.len().max(1), |cols| {
             for (col, w) in cols.iter_mut().zip(&self.averages) {
@@ -117,6 +147,10 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
                 let value = w.q_avg.map_or("—".to_string(), |q| format!("{} m³/s", format_vn(q, 2)));
                 col.label(RichText::new(value).font(FontId::new(19.0, theme::semibold())).color(p.accent_text));
                 col.label(RichText::new(format!("có số liệu {}", view::coverage_label(w.covered))).size(12.0).color(p.muted));
+                let rain = w.rain_mm.map_or("—".to_string(), |mm| format!("{} mm", format_vn(mm, 1)));
+                col.add_space(2.0);
+                col.label(RichText::new(format!("Mưa {rain}")).font(FontId::new(15.0, theme::semibold())).color(p.text));
+                col.label(RichText::new(format!("có số liệu {}", view::coverage_label(w.rain_covered))).size(12.0).color(p.muted));
             }
         });
         ui.add_space(2.0);

@@ -131,3 +131,101 @@ pub fn rain_chart(ui: &mut egui::Ui, p: &Palette, day_labels: &[String], series:
             });
     }
 }
+
+/// Một biểu đồ cột theo ngày; trả về ngày đang rê chuột. `values[i] = None` là ngày chưa có số liệu (không vẽ cột).
+#[allow(clippy::too_many_arguments)]
+fn day_bars(ui: &mut egui::Ui, p: &Palette, id: &str, values: &[Option<f64>], labels: &[String], color: Color32, y_label: &str, height: f32, show_values: bool) -> Option<(usize, egui::Response)> {
+    let days = values.len();
+    let max_value = values.iter().flatten().cloned().fold(0.0_f64, f64::max).max(1.0);
+    let step = (days / 8).max(1);
+    let labels = labels.to_vec();
+    let mut hovered = None;
+    let out = Plot::new(id.to_string())
+        .height(height)
+        .allow_zoom(false)
+        .allow_drag(false)
+        .allow_scroll(false)
+        .allow_boxed_zoom(false)
+        .include_y(0.0)
+        .include_y(max_value * 1.2)
+        .include_x(-0.6)
+        .include_x(days as f64 - 0.4)
+        .y_axis_label(y_label)
+        .show_x(false)
+        .show_y(false)
+        .show_grid([false, true])
+        .show_background(false)
+        .x_axis_formatter(move |mark, _| {
+            let i = mark.value.round();
+            if (mark.value - i).abs() < 0.05 && i >= 0.0 && (i as usize / step) * step == i as usize { labels.get(i as usize).cloned().unwrap_or_default() } else { String::new() }
+        })
+        .x_grid_spacer(move |_| (0..days).step_by(step).map(|i| egui_plot::GridMark { value: i as f64, step_size: step as f64 }).collect())
+        .show(ui, |plot| {
+            hovered = plot.pointer_coordinate().filter(|_| plot.response().hovered()).and_then(|pt| {
+                let d = pt.x.round();
+                (d >= 0.0 && (d as usize) < days && (pt.x - d).abs() <= 0.5).then_some(d as usize)
+            });
+            if let Some(d) = hovered {
+                let d = d as f64;
+                let band = vec![[d - 0.5, 0.0], [d + 0.5, 0.0], [d + 0.5, max_value * 1.2], [d - 0.5, max_value * 1.2]];
+                plot.polygon(Polygon::new("", band).fill_color(p.primary.gamma_multiply(0.14)).allow_hover(false));
+            }
+            let bars: Vec<Bar> = values
+                .iter()
+                .enumerate()
+                .filter_map(|(i, v)| v.map(|v| Bar::new(i as f64, v).width(0.7).fill(color).stroke(egui::Stroke::new(1.0_f32, p.card))))
+                .collect();
+            plot.bar_chart(BarChart::new("", bars).color(color).allow_hover(false));
+            if show_values {
+                for (i, v) in values.iter().enumerate() {
+                    if let Some(v) = v {
+                        let text = RichText::new(format_vn(*v, 1)).font(FontId::proportional(10.0)).color(p.text);
+                        plot.text(Text::new("", PlotPoint::new(i as f64, *v + max_value * 0.07), text));
+                    }
+                }
+            }
+        });
+    hovered.map(|i| (i, out.response))
+}
+
+/// Hai biểu đồ cột xếp chồng theo ngày: lưu lượng về trung bình (m³/s) và lượng mưa (mm).
+/// Ngày chưa có số liệu để trống; rê chuột hiện giá trị cả hai và tỷ lệ thời gian có số liệu.
+pub fn daily_chart(ui: &mut egui::Ui, p: &Palette, days: &[crate::averages::DayStat], height: f32) {
+    let labels: Vec<String> = days.iter().map(|d| d.date.format("%d/%m").to_string()).collect();
+    let show_values = days.len() <= 14;
+    let q: Vec<Option<f64>> = days.iter().map(|d| d.q_avg).collect();
+    let rain: Vec<Option<f64>> = days.iter().map(|d| d.rain_mm).collect();
+    let (q_color, rain_color) = (series_color(0), series_color(1));
+    let mut hover = None;
+    for (id, title, values, color, unit) in [
+        ("daily_q", "Lưu lượng về trung bình ngày", &q, q_color, "m³/s"),
+        ("daily_rain", "Lượng mưa ngày", &rain, rain_color, "mm"),
+    ] {
+        ui.horizontal(|ui| {
+            let (swatch, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+            ui.painter().rect_filled(swatch, egui::CornerRadius::same(2), color);
+            ui.label(RichText::new(format!("{title} ({unit})")).size(13.0));
+        });
+        if let Some(h) = day_bars(ui, p, id, values, &labels, color, unit, height, show_values) {
+            hover = Some(h);
+        }
+        ui.add_space(6.0);
+    }
+    if let Some((i, response)) = hover {
+        let d = &days[i];
+        egui::Tooltip::always_open(response.ctx.clone(), response.layer_id, response.id.with("tip"), egui::PopupAnchor::Pointer)
+            .gap(12.0)
+            .show(|ui| {
+                ui.set_max_width(320.0);
+                ui.label(RichText::new(d.date.format("%d/%m/%Y").to_string()).strong());
+                match d.q_avg {
+                    Some(v) => ui.label(format!("Lưu lượng về: {} m³/s (có số liệu {})", format_vn(v, 2), crate::view::coverage_label(d.covered))),
+                    None => ui.label(RichText::new("Lưu lượng về: chưa có số liệu").color(p.muted)),
+                };
+                match d.rain_mm {
+                    Some(v) => ui.label(format!("Mưa: {} mm", format_vn(v, 1))),
+                    None => ui.label(RichText::new("Mưa: chưa có số liệu").color(p.muted)),
+                };
+            });
+    }
+}

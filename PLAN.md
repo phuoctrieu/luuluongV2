@@ -86,6 +86,13 @@ Chủ dự án đã chạy app với ECAPRO thật, số mực nước và lưu 
 - [x] H4 Tách `Tính bằng tay` thành tab riêng (Tính toán | Tính bằng tay | Lịch sử | Cài đặt, phím 1–4); thẻ trực tuyến + thời tiết ở tab Tính toán — kiểm tra: chụp ảnh, Cmd+Enter chỉ tính khi đang ở tab Tính bằng tay
 - [x] H5 Cập nhật `contexte`, `MAP.md`; chạy test + clippy
 
+### Giai đoạn 8 — Mưa cộng dồn và biểu đồ theo ngày (yêu cầu 2026-10-28)
+- [x] I1 Lượng mưa trung bình mỗi chu kỳ từ kênh 1 (`CycleMean.rain_mm_h`, `push_rain`); thiếu mưa không làm chu kỳ thiếu lưu lượng — test tracker (3), live (2)
+- [x] I2 Cột `rain_mm` (nullable) trong `calc`: di trú DB cũ bằng `ALTER TABLE`, CSV thêm cột "Lượng mưa (mm)" — test di trú, roundtrip, CSV
+- [x] I3 `window_averages` cộng dồn mưa theo khoảng (cắt tỷ lệ chu kỳ vắt qua đầu khoảng), `daily_stats` theo ngày giờ Việt Nam (chu kỳ vắt qua nửa đêm chia hai ngày) — 14 test
+- [x] I4 Giao diện: hàng "Mưa cộng dồn" trong bảng trung bình, thẻ "Lưu lượng về và mưa theo ngày" (7/14/30 ngày, hai biểu đồ cột, rê chuột xem chi tiết) — chụp ảnh bản thử
+- [x] I5 Tài liệu; `cargo test --workspace`, clippy sạch
+
 ### Giai đoạn 6c — Xả môi trường đo từ kênh 2 (yêu cầu 2026-10-28)
 Lưu lượng về vẫn tự tính từ mực nước (không dùng kênh 4/14 của thiết bị). Xả môi trường lấy từ kênh 2 `DCTT|LUULUONG`, trung bình trong chu kỳ, thay hằng số 1,5; thiếu kênh 2 thì chu kỳ "thiếu số liệu". Đã bỏ `eco_q` khỏi `[logger]` và Cài đặt (file cũ còn khóa này vẫn nạp được). Đã sửa lỗi coi trạng thái 0 là mất kết nối (dữ liệu thật). 
 - [x] G1 logger/tracker/live/lịch sử/cài đặt dùng kênh 2 — test pass, clippy sạch

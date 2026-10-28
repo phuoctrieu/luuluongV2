@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use app::chart;
-use app::averages::{window_averages, WindowAverage};
+use app::averages::{window_averages, DayStat, WindowAverage};
 use app::live::Live;
 use app::form::{validate, Field, Form};
 use app::paint;
@@ -116,6 +116,8 @@ struct App {
     rx: Receiver<WeatherResult>,
     live: Live,
     averages: Vec<WindowAverage>,
+    daily: Vec<DayStat>,
+    daily_range: usize,
     averages_at: i64,
     live_rx: Receiver<Sample>,
     live_target: Arc<Mutex<Target>>,
@@ -221,6 +223,8 @@ impl App {
             rx,
             live: Live::new(config.logger.period()),
             averages: window_averages(&[], 0),
+            daily: Vec::new(),
+            daily_range: 14,
             averages_at: 0,
             live_rx,
             live_target,
@@ -639,6 +643,8 @@ impl App {
     /// Tab Tính toán: số liệu trực tuyến từ thiết bị, rồi thời tiết và radar.
     fn calc_screen(&mut self, ui: &mut egui::Ui, p: &Palette) {
         self.live_panel(ui, p);
+        ui.add_space(12.0);
+        self.daily_card(ui, p);
         ui.add_space(12.0);
         self.weather_card(ui, p);
 
