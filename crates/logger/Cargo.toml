@@ -1,0 +1,12 @@
+[package]
+name = "luuluong-logger"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+
+[dependencies]
+thiserror = "1"
+ureq = { version = "2", features = ["json"] }
+
+[dev-dependencies]
+mockito = "1"

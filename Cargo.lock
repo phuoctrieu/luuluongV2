@@ -1538,6 +1538,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "luuluong-logger"
+version = "0.1.0"
+dependencies = [
+ "mockito",
+ "thiserror 1.0.69",
+ "ureq",
+]
+
+[[package]]
 name = "luuluong-storage"
 version = "0.1.0"
 dependencies = [
