@@ -30,6 +30,7 @@
 - `scripts/package_macos.sh` — đóng `.app` universal (ký tạm) trong `.dmg` vào `livrables/` (sau khi build 2 target); `scripts/build_windows.ps1` — build + nén `.zip` trên máy Windows
 - `.github/workflows/release.yml` — CI macOS + Windows khi gắn thẻ `v*` (chưa chạy lần nào, chưa có remote)
 - `livrables/HUONG-DAN-MO-LAN-DAU.md` — trang hướng dẫn cài và mở lần đầu cho bản chưa ký số; file `.dmg`/`.zip` sinh ra ở đây không đưa vào Git
-- `crates/logger/` — `luuluong-logger`: đọc MNTL (kênh 16) từ data logger ECAPRO (`parse_mntl`, `fetch`)
+- `crates/logger/` — `luuluong-logger`: đọc MNTL (kênh 16) từ data logger ECAPRO (`parse_mntl`, `fetch`, `poller.rs` luồng nền, `tracker.rs` chốt mực nước tại mốc đồng hồ)
+- `crates/app/src/live.rs` — trạng thái mực nước + lưu lượng về theo chu kỳ (thuần); `live_screen.rs` — tab Hiện tại, nút lấy mực nước ở tab Tính bằng tay
 - `crates/app/build.rs` — gắn biểu tượng/thông tin vào `.exe` khi build cho Windows (`winresource`); `crates/app/assets/icon.{png,ico,icns}` — biểu tượng ứng dụng, sinh bằng `scripts/make_icon.py`
 
