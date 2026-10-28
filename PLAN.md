@@ -78,6 +78,14 @@ Không thêm dependency ngoài: tái dùng `ureq` (đã có ở `luuluong-weathe
 - [x] E7 Lưu lịch sử: mỗi mốc có Q về ghi một dòng vào SQLite (cột `source` = "logger" / "tay" để phân biệt), xuất CSV như cũ — kiểm tra: test `history.rs` ghi/đọc/xuất CSV có cột mới; CSV cũ vẫn mở được
 - [ ] E8 Cập nhật `MAP.md`, `contexte/mo-hinh-tinh-toan.md` (cách tính Q chu kỳ + ví dụ số), nghiệm thu: `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, thử trên mạng LAN thật `192.168.200.x` (chưa thử được nếu không ở nhà máy) — kiểm tra: ghi rõ phần đã/chưa thử thật
 
+### Giai đoạn 7 — Sau khi chạy thật (2026-10-28): trung bình dài hạn, trạm mưa, tách tab Tính bằng tay
+Chủ dự án đã chạy app với ECAPRO thật, số mực nước và lưu lượng về chu kỳ 11:00 đúng. Ba yêu cầu:
+- [x] H1 Trạm đo mưa: đọc kênh 1 `LUU LUONG MUA` (mm/h) vào `Reading.rain`, hiện trong thẻ trực tuyến — kiểm tra: test parse (số thật 8,0 / 2,0; thiếu kênh → None; không nhầm kênh 10–16)
+- [x] H2 Lưu lượng về trung bình 3 giờ, 12 giờ, 1 ngày, 1 tuần, 1 tháng (30 ngày), 1 năm (365 ngày): bình quân theo thời gian các chu kỳ tự động trong lịch sử (Σ W / Σ thời gian), kèm tỷ lệ thời gian có số liệu — kiểm tra: test thuần `window_averages` (chu kỳ lẫn 15/30 phút, khoảng trống, ngoài cửa sổ, dòng tính tay không tính), thử trên `history.db` thật
+- [x] H3 Hiển thị rõ chu kỳ đang dùng ("Chu kỳ 15 phút: 10:45 – 11:00") và mô tả cách app khởi động lại — kiểm tra: chụp ảnh (đã chụp bản thử: chu kỳ ghi "Chu kỳ 15 phút: …")
+- [x] H4 Tách `Tính bằng tay` thành tab riêng (Tính toán | Tính bằng tay | Lịch sử | Cài đặt, phím 1–4); thẻ trực tuyến + thời tiết ở tab Tính toán — kiểm tra: chụp ảnh, Cmd+Enter chỉ tính khi đang ở tab Tính bằng tay
+- [x] H5 Cập nhật `contexte`, `MAP.md`; chạy test + clippy
+
 ### Giai đoạn 6c — Xả môi trường đo từ kênh 2 (yêu cầu 2026-10-28)
 Lưu lượng về vẫn tự tính từ mực nước (không dùng kênh 4/14 của thiết bị). Xả môi trường lấy từ kênh 2 `DCTT|LUULUONG`, trung bình trong chu kỳ, thay hằng số 1,5; thiếu kênh 2 thì chu kỳ "thiếu số liệu". Đã bỏ `eco_q` khỏi `[logger]` và Cài đặt (file cũ còn khóa này vẫn nạp được). Đã sửa lỗi coi trạng thái 0 là mất kết nối (dữ liệu thật). 
 - [x] G1 logger/tracker/live/lịch sử/cài đặt dùng kênh 2 — test pass, clippy sạch

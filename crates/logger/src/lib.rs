@@ -43,11 +43,13 @@ pub struct Reading {
     pub q_h2: Option<f64>,
     /// Lưu lượng xả môi trường (kênh 2, m³/s).
     pub q_eco: Option<f64>,
+    /// Cường độ mưa tại trạm đo (kênh 1 `LUU LUONG MUA`, mm/h).
+    pub rain: Option<f64>,
 }
 
 impl Reading {
     pub fn new(z: f64, status: Status) -> Self {
-        Reading { z, status, q_h1: None, q_h2: None, q_eco: None }
+        Reading { z, status, q_h1: None, q_h2: None, q_eco: None, rain: None }
     }
 }
 
@@ -92,7 +94,7 @@ pub fn parse_mntl(text: &str) -> Result<Reading, LoggerError> {
         return Err(LoggerError::BadResponse);
     }
     let status = status_of(&f).ok_or(LoggerError::BadResponse)?;
-    Ok(Reading { z, status, q_h1: channel_flow(text, "5").map(machine_flow), q_h2: channel_flow(text, "6").map(machine_flow), q_eco: channel_flow(text, "2") })
+    Ok(Reading { z, status, q_h1: channel_flow(text, "5").map(machine_flow), q_h2: channel_flow(text, "6").map(machine_flow), q_eco: channel_flow(text, "2"), rain: channel_flow(text, "1") })
 }
 
 pub fn fetch(url: &str, timeout: Duration) -> Result<Reading, LoggerError> {
@@ -175,7 +177,7 @@ mod tests {
     #[test]
     fn real_device_output_gives_level_and_machines_despite_status_zero() {
         let r = parse_mntl(REAL).unwrap();
-        assert_eq!(r, Reading { z: 157.189, status: Status::Normal, q_h1: Some(16.54), q_h2: Some(0.0), q_eco: Some(1.5) });
+        assert_eq!(r, Reading { z: 157.189, status: Status::Normal, q_h1: Some(16.54), q_h2: Some(0.0), q_eco: Some(1.5), rain: Some(2.0) });
     }
 
     #[test]
@@ -184,6 +186,16 @@ mod tests {
         assert_eq!(r.q_eco, Some(1.5));
         assert_eq!(parse_mntl(SAMPLE).unwrap().q_eco, None);
         assert_eq!(parse_mntl(&format!("a,2,D,abc,m3/s,1,0,0\n{SAMPLE}")).unwrap().q_eco, None);
+    }
+
+    #[test]
+    fn rain_gauge_comes_from_channel_1_only() {
+        let r = parse_mntl(&format!("33.0/ 0.0/ 3.0,1,LUU LUONG MUA,8.0,mm/h,1,0,0\na,10,Time,555,,0,0,0\n{SAMPLE}")).unwrap();
+        assert_eq!(r.rain, Some(8.0));
+        assert_eq!(parse_mntl(SAMPLE).unwrap().rain, None);
+        assert_eq!(parse_mntl(&format!("a,10,Time,555,,0,0,0\n{SAMPLE}")).unwrap().rain, None, "kênh 10 không phải trạm mưa");
+        assert_eq!(parse_mntl(&format!("a,1,M,abc,mm/h,1,0,0\n{SAMPLE}")).unwrap().rain, None);
+        assert_eq!(parse_mntl(REAL).unwrap().rain, Some(2.0));
     }
 
     #[test]

@@ -63,6 +63,25 @@ CREATE INDEX IF NOT EXISTS idx_calc_created ON calc(created_at);";
 
 const COLUMNS: &str = "id, created_at, z_start, z_end, hours, h1, h2, spill_q, spill_h, eco_q, q_in, w_in, operator, note";
 
+fn record_from_row(row: &rusqlite::Row) -> rusqlite::Result<Record> {
+    Ok(Record {
+        id: row.get(0)?,
+        created_at: row.get(1)?,
+        z_start: row.get(2)?,
+        z_end: row.get(3)?,
+        hours: row.get(4)?,
+        h1: row.get(5)?,
+        h2: row.get(6)?,
+        spill_q: row.get(7)?,
+        spill_h: row.get(8)?,
+        eco_q: row.get(9)?,
+        q_in: row.get(10)?,
+        w_in: row.get(11)?,
+        operator: row.get(12)?,
+        note: row.get(13)?,
+    })
+}
+
 impl History {
     pub fn open(path: &Path) -> Result<History, StorageError> {
         Self::init(Connection::open(path)?)
@@ -96,24 +115,14 @@ impl History {
              ORDER BY created_at DESC, id DESC"
         ))?;
         let day = date.map(|d| d.format("%Y-%m-%d").to_string());
-        let rows = stmt.query_map([day], |row| {
-            Ok(Record {
-                id: row.get(0)?,
-                created_at: row.get(1)?,
-                z_start: row.get(2)?,
-                z_end: row.get(3)?,
-                hours: row.get(4)?,
-                h1: row.get(5)?,
-                h2: row.get(6)?,
-                spill_q: row.get(7)?,
-                spill_h: row.get(8)?,
-                eco_q: row.get(9)?,
-                q_in: row.get(10)?,
-                w_in: row.get(11)?,
-                operator: row.get(12)?,
-                note: row.get(13)?,
-            })
-        })?;
+        let rows = stmt.query_map([day], record_from_row)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Các dòng từ thời điểm `from_unix` (giây, UTC) trở đi, cũ trước; để tính trung bình theo khoảng thời gian.
+    pub fn list_since(&self, from_unix: i64) -> Result<Vec<Record>, StorageError> {
+        let mut stmt = self.conn.prepare(&format!("SELECT {COLUMNS} FROM calc WHERE created_at >= ?1 ORDER BY created_at ASC, id ASC"))?;
+        let rows = stmt.query_map([vn_timestamp(from_unix)], record_from_row)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
@@ -164,6 +173,19 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, id);
         assert_eq!(rows[0], Record { id, ..rec("2026-10-27T10:30:00+07:00", 254.52) });
+    }
+
+    #[test]
+    fn list_since_keeps_only_rows_from_that_instant_on_oldest_first() {
+        let h = History::open_in_memory().unwrap();
+        for (t, q) in [("2026-10-27T08:00:00+07:00", 1.0), ("2026-10-28T09:00:00+07:00", 2.0), ("2026-10-28T11:00:00+07:00", 3.0)] {
+            h.insert(&rec(t, q)).unwrap();
+        }
+        // 2026-10-28 09:00 giờ Việt Nam = 02:00 UTC
+        let from = "2026-10-28".parse::<NaiveDate>().unwrap().and_hms_opt(2, 0, 0).unwrap().and_utc().timestamp();
+        let q: Vec<_> = h.list_since(from).unwrap().iter().map(|r| r.q_in).collect();
+        assert_eq!(q, vec![2.0, 3.0], "gồm đúng mốc bằng nhau, cũ trước");
+        assert!(h.list_since(from + 3 * 3600 + 1).unwrap().is_empty());
     }
 
     #[test]

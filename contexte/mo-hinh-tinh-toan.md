@@ -12,6 +12,12 @@ Ghi chú vận hành: q mỗi tổ máy mặc định 17,3 m³/s (cần xác nh�
 - Mực nước ngoài 149–165 m: từ chối như tính tay.
 - Mỗi chu kỳ tính xong tự lưu một dòng lịch sử (giờ chạy H1/H2 thực tế, xả môi trường đo được), ghi chú "Tự động từ thiết bị ECAPRO".
 
+## Khởi động lại, trung bình dài hạn, trạm mưa (2026-10-28)
+- Thiết bị chỉ trả giá trị hiện tại, không có lịch sử, nên lúc app tắt thì không có số liệu và app KHÔNG tự bù. Mở lại: bộ nhớ chu kỳ bắt đầu từ đầu, cần hai mốc đồng hồ liên tiếp (chờ tối đa 15–30 phút) mới có lưu lượng về mới. Các chu kỳ đã tính trước đó nằm trong lịch sử SQLite và vẫn dùng cho trung bình.
+- Trung bình 3 giờ, 12 giờ, 1 ngày, 1 tuần, 1 tháng (30 ngày), 1 năm (365 ngày) = bình quân theo thời gian các chu kỳ tự động đã lưu (`crates/app/src/averages.rs`), chỉ tính phần thời gian có số liệu; kèm tỷ lệ "có số liệu" của khoảng. Dòng tính tay không tính. Hai dòng chồng một chu kỳ thì giữ dòng lưu trước.
+- Trạm đo mưa: kênh 1 `LUU LUONG MUA` (mm/h), chỉ hiển thị cường độ hiện tại (chưa cộng dồn).
+- Màn hình: tab Tính toán (số liệu trực tuyến + thời tiết), tab Tính bằng tay (nhập tay), Lịch sử, Cài đặt.
+
 ## Dữ liệu thật từ ECAPRO (curl ngày 2026-10-28)
 - Cột trạng thái KHÔNG dùng để loại số đo: kênh 16 (mực nước) báo trạng thái 0 nhưng giá trị đúng (157,189, khớp kênh 9 và 15); kênh 7, 11, 14 cũng 0 mà vẫn có số. Mã chỉ coi 2/3 là cảnh báo thấp/cao. (Ghi chú "0 = không kết nối" trong `huong-dan-lay-mntl-hien-tai.md` không đúng cho các kênh này.) Hệ quả chưa xử lý: nếu thiết bị mất cảm biến mà vẫn trả số cũ thì app không phân biệt được.
 - Kênh dùng: 16 mực nước hồ; 5 lưu lượng máy H1; 6 lưu lượng máy H2; 2 `DCTT|LUULUONG` = 1,5 m³/s (xả môi trường đo thật).

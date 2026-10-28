@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use app::averages::{window_averages, WINDOWS};
 use app::form::Field;
 use app::live::{history_record, next_boundary, FlowView, VN_TZ};
 use app::paint::{self, Icon};
@@ -33,6 +34,7 @@ impl App {
             match h.insert(&record) {
                 Ok(_) => {
                     self.history_dirty = true;
+                    self.averages_at = 0;
                     self.storage_warning = None;
                 }
                 Err(e) => self.storage_warning = Some(e.to_string()),
@@ -83,10 +85,46 @@ impl App {
                 self.flow_column(&mut cols[2], p, now);
             });
             ui.add_space(8.0);
+            ui.separator();
+            self.averages_row(ui, p, now);
+            ui.add_space(8.0);
             let note = "Lưu lượng về = (thể tích hồ ở mốc sau − mốc trước) ÷ thời gian + lưu lượng qua tổ máy + xả môi trường (cả hai lấy trung bình số đo trong chu kỳ). \
 Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đọc trong 1 phút trước mốc.";
             ui.label(RichText::new(note).size(12.0).color(p.muted));
         });
+    }
+
+    /// Tải lại lịch sử và tính trung bình mỗi phút, hoặc ngay khi có chu kỳ mới được lưu.
+    fn refresh_averages(&mut self, now: i64) {
+        if now - self.averages_at < 60 {
+            return;
+        }
+        self.averages_at = now;
+        let Some(h) = &self.history else { return };
+        match h.list_since(now - WINDOWS[WINDOWS.len() - 1].1) {
+            Ok(rows) => self.averages = window_averages(&rows, now),
+            Err(e) => self.storage_warning = Some(e.to_string()),
+        }
+    }
+
+    fn averages_row(&mut self, ui: &mut egui::Ui, p: &Palette, now: i64) {
+        self.refresh_averages(now);
+        ui.label(RichText::new("Lưu lượng về trung bình").font(FontId::new(13.0, theme::semibold())).color(p.primary));
+        ui.add_space(4.0);
+        ui.columns(self.averages.len().max(1), |cols| {
+            for (col, w) in cols.iter_mut().zip(&self.averages) {
+                col.label(RichText::new(w.label).size(13.0).color(p.muted));
+                let value = w.q_avg.map_or("—".to_string(), |q| format!("{} m³/s", format_vn(q, 2)));
+                col.label(RichText::new(value).font(FontId::new(19.0, theme::semibold())).color(p.accent_text));
+                col.label(RichText::new(format!("có số liệu {}", view::coverage_label(w.covered))).size(12.0).color(p.muted));
+            }
+        });
+        ui.add_space(2.0);
+        ui.label(
+            RichText::new("Bình quân theo thời gian của các chu kỳ đã lưu (kể cả những lần mở app trước). Khoảng nào app chưa chạy thì không có số liệu và không được bù; tỷ lệ \"có số liệu\" cho biết trung bình dựa trên bao nhiêu phần của khoảng.")
+                .size(12.0)
+                .color(p.muted),
+        );
     }
 
     fn level_column(&mut self, ui: &mut egui::Ui, p: &Palette, now: i64) {
@@ -113,6 +151,12 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
         if self.live.level().is_some() && self.live.stale(now, poll) {
             paint::note(ui, Icon::Warn, p.error, 13.0, RichText::new("Dữ liệu cũ: chưa có lần đọc mới."));
         }
+        ui.add_space(4.0);
+        let rain = match self.live.rain() {
+            Some((_, mm_h)) => format!("Trạm đo mưa: {} mm/h", format_vn(mm_h, 1)),
+            None => "Trạm đo mưa: chưa có số liệu".into(),
+        };
+        ui.label(RichText::new(rain).font(FontId::new(14.0, theme::semibold())).color(p.text));
     }
 
     fn machines_column(&mut self, ui: &mut egui::Ui, p: &Palette, now: i64) {
@@ -147,7 +191,7 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
                     Icon::Info,
                     p.muted,
                     format!(
-                        "Chu kỳ {} – {}: mực nước {sign}{} m; tổ máy trung bình H1 {} · H2 {} m³/s.",
+                        "Chu kỳ {period} phút: {} – {}; mực nước {sign}{} m; tổ máy trung bình H1 {} · H2 {} m³/s.",
                         clock(f.from.time),
                         clock(f.to.time),
                         format_vn(f.dz, 3),

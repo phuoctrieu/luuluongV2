@@ -203,9 +203,30 @@ pub fn updated_label(fetched_at: i64, tz_offset: i32, stale: bool) -> String {
     }
 }
 
+/// Tỷ lệ thời gian có số liệu của một khoảng: "50 %", "<1 %" khi rất nhỏ nhưng khác 0.
+pub fn coverage_label(covered: f64) -> String {
+    if covered <= 0.0 {
+        "0 %".into()
+    } else if covered < 0.01 {
+        "<1 %".into()
+    } else {
+        format!("{} %", (covered.min(1.0) * 100.0).round() as u32)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coverage_label_rounds_and_never_shows_zero_for_tiny_data() {
+        assert_eq!(coverage_label(0.0), "0 %");
+        assert_eq!(coverage_label(30.0 / 525_600.0), "<1 %");
+        assert_eq!(coverage_label(0.5), "50 %");
+        assert_eq!(coverage_label(0.8333), "83 %");
+        assert_eq!(coverage_label(1.0), "100 %");
+        assert_eq!(coverage_label(1.2), "100 %");
+    }
 
     #[test]
     fn clock_secs_uses_the_local_offset() {

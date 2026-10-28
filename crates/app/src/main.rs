@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use app::chart;
+use app::averages::{window_averages, WindowAverage};
 use app::live::Live;
 use app::form::{validate, Field, Form};
 use app::paint;
@@ -89,6 +90,7 @@ fn open_folder(path: &std::path::Path) {
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
     Calc,
+    Manual,
     History,
     Settings,
 }
@@ -113,6 +115,8 @@ struct App {
     tx: Sender<WeatherResult>,
     rx: Receiver<WeatherResult>,
     live: Live,
+    averages: Vec<WindowAverage>,
+    averages_at: i64,
     live_rx: Receiver<Sample>,
     live_target: Arc<Mutex<Target>>,
     api_key: String,
@@ -191,6 +195,7 @@ impl App {
         let tab = match std::env::args().find_map(|a| a.strip_prefix("--tab=").map(str::to_owned)).as_deref() {
             Some("history") => Tab::History,
             Some("settings") => Tab::Settings,
+            Some("manual") => Tab::Manual,
             _ => Tab::Calc,
         };
         let live_target = Arc::new(Mutex::new(Target { url: config.logger.url.clone(), poll: Duration::from_secs(config.logger.poll().into()) }));
@@ -215,6 +220,8 @@ impl App {
             tx,
             rx,
             live: Live::new(config.logger.period()),
+            averages: window_averages(&[], 0),
+            averages_at: 0,
             live_rx,
             live_target,
             api_key,
@@ -385,30 +392,33 @@ impl App {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        let (calc, clear, t1, t2, t3, refresh) = ctx.input_mut(|i| {
+        let (calc, clear, t1, t2, t3, t4, refresh) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::COMMAND, Key::Enter),
                 i.consume_key(Modifiers::COMMAND, Key::Backspace),
                 i.consume_key(Modifiers::COMMAND, Key::Num1),
                 i.consume_key(Modifiers::COMMAND, Key::Num2),
                 i.consume_key(Modifiers::COMMAND, Key::Num3),
+                i.consume_key(Modifiers::COMMAND, Key::Num4),
                 i.consume_key(Modifiers::COMMAND, Key::R),
             )
         });
         if refresh {
             self.refresh_manually(ctx);
         }
-        if calc {
+        if calc && self.tab == Tab::Manual {
             self.try_compute();
         }
-        if clear {
+        if clear && self.tab == Tab::Manual {
             self.clear();
         }
         if t1 {
             self.tab = Tab::Calc;
         } else if t2 {
-            self.tab = Tab::History;
+            self.tab = Tab::Manual;
         } else if t3 {
+            self.tab = Tab::History;
+        } else if t4 {
             self.tab = Tab::Settings;
         }
     }
@@ -545,7 +555,7 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::History, "Lịch sử", "2"), (Tab::Settings, "Cài đặt", "3")] {
+                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::Manual, "Tính bằng tay", "2"), (Tab::History, "Lịch sử", "3"), (Tab::Settings, "Cài đặt", "4")] {
                         let active = self.tab == tab;
                         let text = if active {
                             RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
@@ -573,6 +583,7 @@ impl eframe::App for App {
             }
             area.show(ui, |ui| match self.tab {
                 Tab::Calc => self.calc_screen(ui, p),
+                Tab::Manual => self.manual_screen(ui, p),
                 Tab::History => self.history_screen(ui, p),
                 Tab::Settings => self.settings_screen(ui, p),
             });
@@ -624,7 +635,40 @@ impl eframe::App for App {
 }
 
 impl App {
+    /// Tab Tính toán: số liệu trực tuyến từ thiết bị, rồi thời tiết và radar.
     fn calc_screen(&mut self, ui: &mut egui::Ui, p: &Palette) {
+        self.live_panel(ui, p);
+        ui.add_space(12.0);
+        self.weather_card(ui, p);
+
+        let data = self.compare_data();
+        ui.add_space(12.0);
+        ui.columns(2, |cols| {
+            let min_h = (stored_height(cols[0].ctx(), "h_compare") - 2.0 * CARD_PAD).max(0.0);
+            self.radar_card(&mut cols[0], p, min_h);
+            if let Some(d) = &data {
+                let h = self.compare_card(&mut cols[1], p, d);
+                store_height(cols[1].ctx(), "h_compare", h);
+            }
+        });
+        // Kết luận + bảng số liệu ở cuối trang.
+        if let Some(d) = &data {
+            ui.add_space(12.0);
+            let gap = 12.0;
+            let total = ui.available_width() - gap;
+            let left = (total * 0.38).max(260.0);
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                // `allocate_ui` kế thừa layout ngang của `horizontal_top`; thẻ phải xếp dọc.
+                ui.allocate_ui_with_layout(egui::vec2(left, 0.0), Layout::top_down(Align::Min), |ui| self.verdict_card(ui, p, d));
+                ui.allocate_ui_with_layout(egui::vec2(total - left, 0.0), Layout::top_down(Align::Min), |ui| self.detail_card(ui, p, d));
+            });
+        }
+
+    }
+
+    /// Tab Tính bằng tay: nhập hai mực nước và các thông số để tính lưu lượng về.
+    fn manual_screen(&mut self, ui: &mut egui::Ui, p: &Palette) {
         let errors = match validate(&self.form, &self.table) {
             Ok(_) => Vec::new(),
             Err(e) => e,
@@ -633,8 +677,6 @@ impl App {
         let previous = self.form.clone();
         let mut enter_pressed = false;
 
-        self.live_panel(ui, p);
-        ui.add_space(12.0);
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.columns(2, |cols| {
@@ -685,33 +727,6 @@ impl App {
                 self.result_panel(&mut cols[1], p);
             });
         });
-
-        ui.add_space(12.0);
-        self.weather_card(ui, p);
-
-        let data = self.compare_data();
-        ui.add_space(12.0);
-        ui.columns(2, |cols| {
-            let min_h = (stored_height(cols[0].ctx(), "h_compare") - 2.0 * CARD_PAD).max(0.0);
-            self.radar_card(&mut cols[0], p, min_h);
-            if let Some(d) = &data {
-                let h = self.compare_card(&mut cols[1], p, d);
-                store_height(cols[1].ctx(), "h_compare", h);
-            }
-        });
-        // Kết luận + bảng số liệu ở cuối trang.
-        if let Some(d) = &data {
-            ui.add_space(12.0);
-            let gap = 12.0;
-            let total = ui.available_width() - gap;
-            let left = (total * 0.38).max(260.0);
-            ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = gap;
-                // `allocate_ui` kế thừa layout ngang của `horizontal_top`; thẻ phải xếp dọc.
-                ui.allocate_ui_with_layout(egui::vec2(left, 0.0), Layout::top_down(Align::Min), |ui| self.verdict_card(ui, p, d));
-                ui.allocate_ui_with_layout(egui::vec2(total - left, 0.0), Layout::top_down(Align::Min), |ui| self.detail_card(ui, p, d));
-            });
-        }
 
         if enter_pressed {
             self.try_compute();

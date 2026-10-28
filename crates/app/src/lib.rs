@@ -6,3 +6,4 @@ pub mod settings;
 pub mod chart;
 pub mod paint;
 pub mod live;
+pub mod averages;

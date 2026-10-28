@@ -90,12 +90,13 @@ pub struct Live {
     last: Option<Result<Reading, LoggerError>>,
     latest: Option<(i64, f64)>,
     machines: Option<(i64, Machines)>,
+    rain: Option<(i64, f64)>,
     logged_to: Option<i64>,
 }
 
 impl Live {
     pub fn new(period_minutes: u32) -> Self {
-        Self { tracker: LevelTracker::new(period_minutes), period: period_minutes, last: None, latest: None, machines: None, logged_to: None }
+        Self { tracker: LevelTracker::new(period_minutes), period: period_minutes, last: None, latest: None, machines: None, rain: None, logged_to: None }
     }
 
     /// Đổi chu kỳ: chốt lại từ đầu vì các mốc cũ nằm trên lưới khác.
@@ -133,6 +134,9 @@ impl Live {
             self.machines = Some((now, Machines { h1: machine(q1), h2: machine(q2) }));
         }
         self.tracker.push_flows(now, flows);
+        if let Some(rain) = result.as_ref().ok().and_then(|r| r.rain) {
+            self.rain = Some((now, rain));
+        }
         match &result {
             Ok(r) => {
                 self.latest = Some((now, r.z));
@@ -151,6 +155,11 @@ impl Live {
     /// Tình trạng hai tổ máy theo lần đọc gần nhất có đủ số liệu (giây, tình trạng).
     pub fn machines(&self) -> Option<(i64, Machines)> {
         self.machines
+    }
+
+    /// Cường độ mưa (mm/h) của lần đọc gần nhất có kênh trạm mưa (giây, mm/h).
+    pub fn rain(&self) -> Option<(i64, f64)> {
+        self.rain
     }
 
     /// Lỗi của lần đọc gần nhất, nếu có.
@@ -318,6 +327,17 @@ mod tests {
             }
             v => panic!("{v:?}"),
         }
+    }
+
+    #[test]
+    fn rain_gauge_keeps_the_latest_reading_that_had_one() {
+        let mut l = Live::new(15);
+        assert_eq!(l.rain(), None);
+        l.record(T0, Ok(Reading { rain: Some(8.0), ..Reading::new(157.0, Status::Normal) }));
+        l.record(T0 + 5, Ok(Reading { rain: Some(0.0), ..Reading::new(157.0, Status::Normal) }));
+        assert_eq!(l.rain(), Some((T0 + 5, 0.0)));
+        l.record(T0 + 10, Ok(Reading::new(157.0, Status::Normal)));
+        assert_eq!(l.rain(), Some((T0 + 5, 0.0)), "lần đọc thiếu kênh mưa không xóa số cũ");
     }
 
     #[test]
