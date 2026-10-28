@@ -148,7 +148,6 @@ impl App {
                     }
                 });
                 text_row(ui, p, "Đọc thiết bị sau mỗi", "giây", &mut self.settings.logger_poll, error_for(&errors, SettingsField::LoggerPoll));
-                text_row(ui, p, "Xả môi trường cộng vào lưu lượng về", "m³/s", &mut self.settings.logger_eco_q, error_for(&errors, SettingsField::LoggerEco));
             });
         });
         ui.add_space(12.0);

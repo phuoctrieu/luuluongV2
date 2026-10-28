@@ -1,4 +1,4 @@
-//! Đọc mực nước hồ "MNTL hien tai" (kênh 16) từ data logger ECAPRO GPIs6.6DA
+//! Đọc mực nước hồ "MNTL hien tai" (kênh 16), lưu lượng tổ máy (kênh 5, 6) và xả môi trường (kênh 2) từ data logger ECAPRO GPIs6.6DA
 //! qua macro WebIOPi `/macros/UpdateMonitor` (xem `huong-dan-lay-mntl-hien-tai.md`).
 
 use std::time::Duration;
@@ -35,11 +35,13 @@ pub struct Reading {
     /// Lưu lượng qua tổ máy H1, H2 (m³/s); `None` nếu thiếu kênh hoặc không phải số.
     pub q_h1: Option<f64>,
     pub q_h2: Option<f64>,
+    /// Lưu lượng xả môi trường (kênh 2, m³/s).
+    pub q_eco: Option<f64>,
 }
 
 impl Reading {
     pub fn new(z: f64, status: Status) -> Self {
-        Reading { z, status, q_h1: None, q_h2: None }
+        Reading { z, status, q_h1: None, q_h2: None, q_eco: None }
     }
 }
 
@@ -69,8 +71,8 @@ fn status_of(f: &[&str]) -> Option<Status> {
     }
 }
 
-/// Lưu lượng tổ máy: `None` nếu thiếu kênh hoặc giá trị không phải số.
-fn turbine_flow(text: &str, ch: &str) -> Option<f64> {
+/// Lưu lượng của một kênh (tổ máy, xả môi trường): `None` nếu thiếu kênh hoặc giá trị không phải số.
+fn channel_flow(text: &str, ch: &str) -> Option<f64> {
     let f = channel_fields(text, ch)?;
     let q: f64 = f.get(3)?.parse().ok().filter(|q: &f64| q.is_finite())?;
     Some(q)
@@ -84,7 +86,7 @@ pub fn parse_mntl(text: &str) -> Result<Reading, LoggerError> {
         return Err(LoggerError::BadResponse);
     }
     let status = status_of(&f).ok_or(LoggerError::BadResponse)?;
-    Ok(Reading { z, status, q_h1: turbine_flow(text, "5"), q_h2: turbine_flow(text, "6") })
+    Ok(Reading { z, status, q_h1: channel_flow(text, "5"), q_h2: channel_flow(text, "6"), q_eco: channel_flow(text, "2") })
 }
 
 pub fn fetch(url: &str, timeout: Duration) -> Result<Reading, LoggerError> {
@@ -158,7 +160,15 @@ mod tests {
     #[test]
     fn real_device_output_gives_level_and_machines_despite_status_zero() {
         let r = parse_mntl(REAL).unwrap();
-        assert_eq!(r, Reading { z: 157.189, status: Status::Normal, q_h1: Some(16.54), q_h2: Some(0.0) });
+        assert_eq!(r, Reading { z: 157.189, status: Status::Normal, q_h1: Some(16.54), q_h2: Some(0.0), q_eco: Some(1.5) });
+    }
+
+    #[test]
+    fn eco_release_comes_from_channel_2_not_from_channel_12() {
+        let r = parse_mntl(&format!("a,12,TT,9.9,,0,0,0\na,2,DCTT|LUULUONG,1.5,m3/s,1,0,0\n{SAMPLE}")).unwrap();
+        assert_eq!(r.q_eco, Some(1.5));
+        assert_eq!(parse_mntl(SAMPLE).unwrap().q_eco, None);
+        assert_eq!(parse_mntl(&format!("a,2,D,abc,m3/s,1,0,0\n{SAMPLE}")).unwrap().q_eco, None);
     }
 
     #[test]

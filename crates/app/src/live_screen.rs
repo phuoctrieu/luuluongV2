@@ -29,7 +29,7 @@ impl App {
             self.live.record(now, result);
         }
         if let (Some(flow), Some(h)) = (self.live.take_unlogged(&self.table), &self.history) {
-            let record = history_record(&flow, self.live.period(), self.config.logger.eco_q);
+            let record = history_record(&flow, self.live.period());
             match h.insert(&record) {
                 Ok(_) => {
                     self.history_dirty = true;
@@ -44,7 +44,6 @@ impl App {
     pub(super) fn sync_live(&mut self) {
         let l = &self.config.logger;
         self.live.set_period(l.period());
-        self.live.set_eco_q(l.eco_q);
         if let Ok(mut t) = self.live_target.lock() {
             t.url = l.url.clone();
             t.poll = Duration::from_secs(l.poll().into());
@@ -84,11 +83,8 @@ impl App {
                 self.flow_column(&mut cols[2], p, now);
             });
             ui.add_space(8.0);
-            let note = format!(
-                "Lưu lượng về = (thể tích hồ ở mốc sau − mốc trước) ÷ thời gian + lưu lượng qua tổ máy (trung bình đo trong chu kỳ) + {} m³/s xả môi trường. \
-Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đọc trong 1 phút trước mốc.",
-                format_vn(self.config.logger.eco_q, 1)
-            );
+            let note = "Lưu lượng về = (thể tích hồ ở mốc sau − mốc trước) ÷ thời gian + lưu lượng qua tổ máy + xả môi trường (cả hai lấy trung bình số đo trong chu kỳ). \
+Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đọc trong 1 phút trước mốc.";
             ui.label(RichText::new(note).size(12.0).color(p.muted));
         });
     }
@@ -155,8 +151,8 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
                         clock(f.from.time),
                         clock(f.to.time),
                         format_vn(f.dz, 3),
-                        format_vn(f.turbine.q_h1, 2),
-                        format_vn(f.turbine.q_h2, 2)
+                        format_vn(f.outflow.q_h1, 2),
+                        format_vn(f.outflow.q_h2, 2)
                     ),
                 )
             }

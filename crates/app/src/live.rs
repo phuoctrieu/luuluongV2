@@ -2,7 +2,7 @@
 //! Thuần logic (thời gian truyền vào), không phụ thuộc giao diện.
 
 use luuluong_core::{inflow_between_levels, VolumeTable};
-use luuluong_logger::tracker::{IntervalState, LevelTracker, Mark, TurbineMean};
+use luuluong_logger::tracker::{IntervalState, LevelTracker, Mark, OutflowMean};
 use luuluong_logger::{is_running, LoggerError, Reading, Status};
 use luuluong_storage::history::{vn_timestamp, Record};
 
@@ -16,9 +16,9 @@ pub struct Flow {
     pub to: Mark,
     /// Mực nước mốc sau trừ mốc trước (m).
     pub dz: f64,
-    /// Lưu lượng tổ máy trung bình và tỷ lệ thời gian chạy trong chu kỳ.
-    pub turbine: TurbineMean,
-    /// m³/s, đã cộng tuabin và xả môi trường.
+    /// Lưu lượng tổ máy, xả môi trường trung bình và tỷ lệ thời gian chạy trong chu kỳ.
+    pub outflow: OutflowMean,
+    /// m³/s, đã cộng tuabin và xả môi trường đo được.
     pub q_in: f64,
 }
 
@@ -65,18 +65,18 @@ fn mm(z: f64) -> f64 {
 }
 
 /// Dòng lịch sử cho một chu kỳ: Z đầu/cuối là hai mốc, giờ chạy H1/H2 theo thực tế, không xả tràn.
-pub fn history_record(f: &Flow, period_minutes: u32, eco_q: f64) -> Record {
+pub fn history_record(f: &Flow, period_minutes: u32) -> Record {
     Record {
         id: 0,
         created_at: vn_timestamp(f.to.time),
         z_start: mm(f.from.z),
         z_end: mm(f.to.z),
         hours: f64::from(period_minutes) / 60.0,
-        h1: f.turbine.run_h1 * f64::from(period_minutes) / 60.0,
-        h2: f.turbine.run_h2 * f64::from(period_minutes) / 60.0,
+        h1: f.outflow.run_h1 * f64::from(period_minutes) / 60.0,
+        h2: f.outflow.run_h2 * f64::from(period_minutes) / 60.0,
         spill_q: 0.0,
         spill_h: 0.0,
-        eco_q,
+        eco_q: f.outflow.q_eco,
         q_in: f.q_in,
         w_in: f.q_in * f64::from(period_minutes) * 60.0,
         operator: String::new(),
@@ -87,7 +87,6 @@ pub fn history_record(f: &Flow, period_minutes: u32, eco_q: f64) -> Record {
 pub struct Live {
     tracker: LevelTracker,
     period: u32,
-    eco_q: f64,
     last: Option<Result<Reading, LoggerError>>,
     latest: Option<(i64, f64)>,
     machines: Option<(i64, Machines)>,
@@ -95,8 +94,8 @@ pub struct Live {
 }
 
 impl Live {
-    pub fn new(period_minutes: u32, eco_q: f64) -> Self {
-        Self { tracker: LevelTracker::new(period_minutes), period: period_minutes, eco_q, last: None, latest: None, machines: None, logged_to: None }
+    pub fn new(period_minutes: u32) -> Self {
+        Self { tracker: LevelTracker::new(period_minutes), period: period_minutes, last: None, latest: None, machines: None, logged_to: None }
     }
 
     /// Đổi chu kỳ: chốt lại từ đầu vì các mốc cũ nằm trên lưới khác.
@@ -105,10 +104,6 @@ impl Live {
             self.period = period_minutes;
             self.tracker = LevelTracker::new(period_minutes);
         }
-    }
-
-    pub fn set_eco_q(&mut self, eco_q: f64) {
-        self.eco_q = eco_q;
     }
 
     /// Mực nước ở mốc đồng hồ gần nhất (làm "mực nước chu kỳ trước" cho tính bằng tay).
@@ -132,8 +127,8 @@ impl Live {
     }
 
     pub fn record(&mut self, now: i64, result: Result<Reading, LoggerError>) {
-        let flows = result.as_ref().ok().and_then(|r| r.q_h1.zip(r.q_h2));
-        if let Some((q1, q2)) = flows {
+        let flows = result.as_ref().ok().and_then(|r| Some((r.q_h1?, r.q_h2?, r.q_eco?)));
+        if let Some((q1, q2, _)) = flows {
             let machine = |q: f64| Machine { q, running: is_running(q) };
             self.machines = Some((now, Machines { h1: machine(q1), h2: machine(q2) }));
         }
@@ -177,8 +172,8 @@ impl Live {
         match self.tracker.state() {
             IntervalState::NoData => FlowView::Waiting,
             IntervalState::Missing { to } => FlowView::Missing { to },
-            IntervalState::Ready(i) => match inflow_between_levels(table, i.from.z, i.to.z, f64::from(self.period), self.eco_q, i.turbine.q_h1, i.turbine.q_h2) {
-                Ok(o) => FlowView::Ready(Flow { from: i.from, to: i.to, dz: i.to.z - i.from.z, turbine: i.turbine, q_in: o.q_in }),
+            IntervalState::Ready(i) => match inflow_between_levels(table, i.from.z, i.to.z, f64::from(self.period), i.outflow.q_eco, i.outflow.q_h1, i.outflow.q_h2) {
+                Ok(o) => FlowView::Ready(Flow { from: i.from, to: i.to, dz: i.to.z - i.from.z, outflow: i.outflow, q_in: o.q_in }),
                 Err(e) => FlowView::Invalid(e.to_string()),
             },
         }
@@ -196,7 +191,11 @@ mod tests {
     }
 
     fn ok_with(z: f64, q1: f64, q2: f64) -> Result<Reading, LoggerError> {
-        Ok(Reading { q_h1: Some(q1), q_h2: Some(q2), ..Reading::new(z, Status::Normal) })
+        ok_eco(z, q1, q2, 1.5)
+    }
+
+    fn ok_eco(z: f64, q1: f64, q2: f64, eco: f64) -> Result<Reading, LoggerError> {
+        Ok(Reading { q_h1: Some(q1), q_h2: Some(q2), q_eco: Some(eco), ..Reading::new(z, Status::Normal) })
     }
 
     fn feed(l: &mut Live, from: i64, to: i64, r: Result<Reading, LoggerError>) {
@@ -227,7 +226,7 @@ mod tests {
 
     #[test]
     fn last_mark_follows_the_tracker() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         assert_eq!(l.last_mark(), None);
         two_periods(&mut l, 160.0, 160.1);
         assert_eq!(l.last_mark(), Some(Mark { time: T0 + 900, z: 160.1 }));
@@ -235,10 +234,10 @@ mod tests {
 
     #[test]
     fn history_record_maps_a_flow_without_turbine_or_spill() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         two_periods(&mut l, 160.0, 160.1);
         let FlowView::Ready(f) = l.flow(&VolumeTable::builtin()) else { panic!() };
-        let r = history_record(&f, 15, 1.5);
+        let r = history_record(&f, 15);
         assert_eq!(r.created_at, vn_timestamp(T0 + 900));
         assert!(r.created_at.ends_with("+07:00"));
         assert_eq!((r.z_start, r.z_end, r.hours, r.eco_q), (160.0, 160.1, 0.25, 1.5));
@@ -250,18 +249,18 @@ mod tests {
 
     #[test]
     fn history_levels_are_rounded_to_a_millimetre() {
-        let turbine = TurbineMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0 };
-        let f = Flow { from: Mark { time: T0, z: 157.19200000000001 }, to: Mark { time: T0 + 900, z: 157.2499999999 }, dz: 0.058, turbine, q_in: 2.0 };
-        let r = history_record(&f, 15, 1.5);
+        let outflow = OutflowMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0, q_eco: 1.5 };
+        let f = Flow { from: Mark { time: T0, z: 157.19200000000001 }, to: Mark { time: T0 + 900, z: 157.2499999999 }, dz: 0.058, outflow, q_in: 2.0 };
+        let r = history_record(&f, 15);
         assert_eq!((r.z_start, r.z_end), (157.192, 157.25));
     }
 
     #[test]
     fn hand_calculations_are_not_automatic() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         two_periods(&mut l, 160.0, 160.1);
         let FlowView::Ready(f) = l.flow(&VolumeTable::builtin()) else { panic!() };
-        let mut r = history_record(&f, 15, 1.5);
+        let mut r = history_record(&f, 15);
         r.note = String::new();
         assert!(!is_automatic(&r));
     }
@@ -269,7 +268,7 @@ mod tests {
     #[test]
     fn each_finished_interval_is_handed_out_once() {
         let t = VolumeTable::builtin();
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         assert!(l.take_unlogged(&t).is_none());
         two_periods(&mut l, 160.0, 160.1);
         let first = l.take_unlogged(&t).expect("chu kỳ đầu");
@@ -283,7 +282,7 @@ mod tests {
 
     #[test]
     fn starts_waiting_with_no_level() {
-        let l = Live::new(15, 1.5);
+        let l = Live::new(15);
         assert_eq!(l.flow(&VolumeTable::builtin()), FlowView::Waiting);
         assert_eq!((l.level(), l.status(), l.error()), (None, None, None));
     }
@@ -291,7 +290,7 @@ mod tests {
     #[test]
     fn flow_is_storage_change_plus_eco_release() {
         let t = VolumeTable::builtin();
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         two_periods(&mut l, 160.0, 160.1);
         let want = inflow_between_levels(&t, 160.0, 160.1, 15.0, 1.5, 0.0, 0.0).unwrap().q_in;
         match l.flow(&t) {
@@ -307,14 +306,14 @@ mod tests {
     #[test]
     fn running_h1_adds_its_measured_flow_to_the_inflow() {
         let t = VolumeTable::builtin();
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         feed(&mut l, T0 - 120, T0 + 900 - 60, ok_with(158.0, 16.54, 0.0));
         feed(&mut l, T0 + 900 - 60, T0 + 900 + 20, ok_with(158.0, 16.54, 0.0));
         match l.flow(&t) {
             FlowView::Ready(f) => {
                 assert!((f.q_in - (1.5 + 16.54)).abs() < 1e-9, "{}", f.q_in);
-                assert_eq!((f.turbine.run_h1, f.turbine.run_h2), (1.0, 0.0));
-                let r = history_record(&f, 15, 1.5);
+                assert_eq!((f.outflow.run_h1, f.outflow.run_h2), (1.0, 0.0));
+                let r = history_record(&f, 15);
                 assert_eq!((r.h1, r.h2), (0.25, 0.0));
             }
             v => panic!("{v:?}"),
@@ -323,7 +322,7 @@ mod tests {
 
     #[test]
     fn machines_are_detected_from_the_latest_reading() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         assert_eq!(l.machines(), None);
         l.record(T0, ok_with(157.0, 16.54, 0.0));
         let (t, m) = l.machines().unwrap();
@@ -338,14 +337,14 @@ mod tests {
 
     #[test]
     fn missing_machine_channels_make_the_interval_missing_not_zero() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         two_periods_without_machines(&mut l);
         assert!(matches!(l.flow(&VolumeTable::builtin()), FlowView::Missing { .. }));
     }
 
     #[test]
     fn steady_level_gives_exactly_the_eco_release() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         two_periods(&mut l, 158.0, 158.0);
         match l.flow(&VolumeTable::builtin()) {
             FlowView::Ready(f) => assert!((f.q_in - 1.5).abs() < 1e-9),
@@ -355,14 +354,14 @@ mod tests {
 
     #[test]
     fn level_outside_the_table_is_invalid_not_extrapolated() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         two_periods(&mut l, 148.0, 148.1);
         assert!(matches!(l.flow(&VolumeTable::builtin()), FlowView::Invalid(_)));
     }
 
     #[test]
     fn read_failures_keep_old_level_and_break_the_interval() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         feed(&mut l, T0 - 120, T0 + 900 - 120, ok(157.0));
         feed(&mut l, T0 + 900 - 120, T0 + 900 + 20, Err(LoggerError::Unreachable));
         assert_eq!(l.level().map(|(_, z)| z), Some(157.0));
@@ -372,7 +371,7 @@ mod tests {
 
     #[test]
     fn network_error_is_remembered_until_the_next_good_reading() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         l.record(T0, ok(157.0));
         l.record(T0 + 5, Err(LoggerError::Unreachable));
         assert_eq!(l.error(), Some(&LoggerError::Unreachable));
@@ -383,7 +382,7 @@ mod tests {
 
     #[test]
     fn stale_after_three_poll_intervals_without_a_valid_level() {
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         assert!(l.stale(T0, 5), "chưa có số liệu nào thì coi là cũ");
         l.record(T0, ok(157.0));
         assert!(!l.stale(T0 + 15, 5));
@@ -393,7 +392,7 @@ mod tests {
     #[test]
     fn changing_period_restarts_the_intervals() {
         let t = VolumeTable::builtin();
-        let mut l = Live::new(15, 1.5);
+        let mut l = Live::new(15);
         two_periods(&mut l, 160.0, 160.1);
         l.set_period(30);
         assert_eq!(l.period(), 30);
@@ -402,14 +401,24 @@ mod tests {
     }
 
     #[test]
-    fn changing_eco_release_applies_to_the_next_computation() {
+    fn eco_release_is_the_measured_flow_of_the_interval() {
         let t = VolumeTable::builtin();
-        let mut l = Live::new(15, 1.5);
-        two_periods(&mut l, 158.0, 158.0);
-        l.set_eco_q(2.0);
+        let mut l = Live::new(15);
+        feed(&mut l, T0 - 120, T0 + 900 + 20, ok_eco(158.0, 0.0, 0.0, 2.0));
         match l.flow(&t) {
-            FlowView::Ready(f) => assert!((f.q_in - 2.0).abs() < 1e-9),
+            FlowView::Ready(f) => {
+                assert!((f.q_in - 2.0).abs() < 1e-9);
+                assert_eq!(history_record(&f, 15).eco_q, 2.0);
+            }
             v => panic!("{v:?}"),
         }
+    }
+
+    #[test]
+    fn missing_eco_channel_makes_the_interval_missing() {
+        let mut l = Live::new(15);
+        let no_eco = Ok(Reading { q_h1: Some(0.0), q_h2: Some(0.0), ..Reading::new(158.0, Status::Normal) });
+        feed(&mut l, T0 - 120, T0 + 900 + 20, no_eco);
+        assert!(matches!(l.flow(&VolumeTable::builtin()), FlowView::Missing { .. }));
     }
 }

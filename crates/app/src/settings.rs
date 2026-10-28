@@ -16,7 +16,6 @@ pub enum SettingsField {
     RainAlert,
     LoggerUrl,
     LoggerPoll,
-    LoggerEco,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -35,7 +34,6 @@ pub struct SettingsForm {
     pub rain_alert_mm: String,
     pub logger_url: String,
     pub logger_poll: String,
-    pub logger_eco_q: String,
     /// Nguồn chính (thẻ ngày).
     pub source: Source,
     /// Các nguồn bật để so sánh; nguồn chính luôn được tính vào.
@@ -58,7 +56,6 @@ impl SettingsForm {
             rain_alert_mm: vn(c.weather.rain_alert_mm),
             logger_url: c.logger.url.clone(),
             logger_poll: c.logger.poll_seconds.to_string(),
-            logger_eco_q: vn(c.logger.eco_q),
             source,
             compare: c.weather.sources.iter().filter_map(|id| Source::from_id(id)).collect(),
             theme: c.ui.theme.clone(),
@@ -99,7 +96,6 @@ impl SettingsForm {
         let poll = number(SettingsField::LoggerPoll, &self.logger_poll, &|x| {
             (x.fract() != 0.0 || !(1.0..=60.0).contains(&x)).then_some("Nhập số giây nguyên từ 1 đến 60")
         });
-        let eco = number(SettingsField::LoggerEco, &self.logger_eco_q, &|x| (x < 0.0).then_some("Lưu lượng xả không được âm"));
         let url = self.logger_url.trim();
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             errors.push(SettingsError { field: SettingsField::LoggerUrl, message: "Địa chỉ phải bắt đầu bằng http:// hoặc https://".into() });
@@ -116,7 +112,6 @@ impl SettingsForm {
         c.weather.rain_alert_mm = rain;
         c.logger.url = url.to_string();
         c.logger.poll_seconds = poll as u32;
-        c.logger.eco_q = eco;
         c.weather.source = self.source.id();
         // Thứ tự cố định theo `Source::ALL`; nguồn chính luôn có mặt.
         c.weather.sources = Source::ALL.iter().filter(|s| **s == self.source || self.compare.contains(s)).map(|s| s.id()).collect();
@@ -229,14 +224,13 @@ mod tests {
         let mut base = Config::default();
         base.logger.period_minutes = 30;
         let mut f = SettingsForm::from_config(&base);
-        assert_eq!((f.logger_poll.as_str(), f.logger_eco_q.as_str()), ("5", "1,5"));
+        assert_eq!(f.logger_poll, "5");
         f.logger_url = " http://10.0.0.5:8880/macros/UpdateMonitor ".into();
         f.logger_poll = "10".into();
-        f.logger_eco_q = "2,5".into();
         let c = f.to_config(&base).unwrap();
         assert_eq!(
             c.logger,
-            luuluong_storage::config::Logger { url: "http://10.0.0.5:8880/macros/UpdateMonitor".into(), poll_seconds: 10, period_minutes: 30, eco_q: 2.5 }
+            luuluong_storage::config::Logger { url: "http://10.0.0.5:8880/macros/UpdateMonitor".into(), poll_seconds: 10, period_minutes: 30 }
         );
     }
 
@@ -250,17 +244,12 @@ mod tests {
     }
 
     #[test]
-    fn logger_poll_is_whole_seconds_and_eco_is_not_negative() {
+    fn logger_poll_is_whole_seconds() {
         for bad in ["0", "2,5", "61"] {
             let mut f = form();
             f.logger_poll = bad.into();
             assert_eq!(errors(&f).iter().map(|e| e.0).collect::<Vec<_>>(), [SettingsField::LoggerPoll], "{bad:?}");
         }
-        let mut f = form();
-        f.logger_eco_q = "-1".into();
-        assert_eq!(errors(&f).iter().map(|e| e.0).collect::<Vec<_>>(), [SettingsField::LoggerEco]);
-        f.logger_eco_q = "0".into();
-        assert!(f.to_config(&Config::default()).is_ok());
     }
 
     #[test]

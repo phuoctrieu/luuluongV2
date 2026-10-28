@@ -214,7 +214,7 @@ impl App {
             scheduler: Scheduler::new(config.weather.refresh_minutes),
             tx,
             rx,
-            live: Live::new(config.logger.period(), config.logger.eco_q),
+            live: Live::new(config.logger.period()),
             live_rx,
             live_target,
             api_key,

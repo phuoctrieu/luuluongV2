@@ -67,8 +67,6 @@ pub struct Logger {
     pub poll_seconds: u32,
     /// Chu kỳ tính lưu lượng về: 15 hoặc 30 phút (xem `period`).
     pub period_minutes: u32,
-    /// Lưu lượng xả môi trường cộng vào lưu lượng về mỗi chu kỳ (m³/s).
-    pub eco_q: f64,
 }
 
 impl Default for Logger {
@@ -77,7 +75,6 @@ impl Default for Logger {
             url: "http://192.168.200.211:8880/macros/UpdateMonitor".into(),
             poll_seconds: 5,
             period_minutes: 15,
-            eco_q: 1.5,
         }
     }
 }
@@ -211,11 +208,14 @@ mod tests {
     fn logger_defaults_and_old_files_still_load() {
         let l = Config::default().logger;
         assert_eq!(l.url, "http://192.168.200.211:8880/macros/UpdateMonitor");
-        assert_eq!((l.poll_seconds, l.period_minutes, l.eco_q), (5, 15, 1.5));
+        assert_eq!((l.poll_seconds, l.period_minutes), (5, 15));
         let path = temp("cu3.toml");
         std::fs::write(&path, "[logger]\nperiod_minutes = 30\n").unwrap();
         let l = Config::load(&path).unwrap().logger;
-        assert_eq!((l.period_minutes, l.poll_seconds, l.eco_q), (30, 5, 1.5));
+        assert_eq!((l.period_minutes, l.poll_seconds), (30, 5));
+        // file của bản trước còn khóa eco_q (nay lấy từ thiết bị): bỏ qua, không lỗi
+        std::fs::write(&path, "[logger]\neco_q = 1.5\nperiod_minutes = 15\n").unwrap();
+        assert!(Config::load(&path).is_ok());
     }
 
     #[test]

@@ -17,22 +17,24 @@ pub struct Mark {
     pub z: f64,
 }
 
-/// Lưu lượng tổ máy trong một chu kỳ.
+/// Lưu lượng ra khỏi hồ trong một chu kỳ: hai tổ máy và xả môi trường.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TurbineMean {
+pub struct OutflowMean {
     /// Trung bình các lần đọc (m³/s), kể cả lúc máy dừng.
     pub q_h1: f64,
     pub q_h2: f64,
     /// Tỷ lệ các lần đọc mà máy đang chạy (0..=1).
     pub run_h1: f64,
     pub run_h2: f64,
+    /// Xả môi trường trung bình (m³/s).
+    pub q_eco: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Interval {
     pub from: Mark,
     pub to: Mark,
-    pub turbine: TurbineMean,
+    pub outflow: OutflowMean,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -50,9 +52,9 @@ pub struct LevelTracker {
     latest: Option<(i64, f64)>,
     slot: Option<i64>,
     /// Lưu lượng tổ máy (giây, H1, H2) trong khoảng một chu kỳ gần đây.
-    flows: VecDeque<(i64, f64, f64)>,
+    flows: VecDeque<(i64, f64, f64, f64)>,
     /// Hai mốc gần nhất: (mốc, mực nước, lưu lượng tổ máy của chu kỳ kết thúc ở mốc) nếu chốt được.
-    marks: VecDeque<(i64, Option<f64>, Option<TurbineMean>)>,
+    marks: VecDeque<(i64, Option<f64>, Option<OutflowMean>)>,
 }
 
 impl LevelTracker {
@@ -67,12 +69,12 @@ impl LevelTracker {
         }
     }
 
-    /// Ghi lưu lượng hai tổ máy lúc `now` (`None` nếu không đọc được). Gọi trước `push` của cùng lần đọc.
-    pub fn push_flows(&mut self, now: i64, flows: Option<(f64, f64)>) {
-        if let Some((a, b)) = flows.filter(|(a, b)| a.is_finite() && b.is_finite()) {
-            self.flows.push_back((now, a, b));
+    /// Ghi lưu lượng H1, H2 và xả môi trường lúc `now` (`None` nếu không đọc được). Gọi trước `push` của cùng lần đọc.
+    pub fn push_flows(&mut self, now: i64, flows: Option<(f64, f64, f64)>) {
+        if let Some((a, b, c)) = flows.filter(|(a, b, c)| a.is_finite() && b.is_finite() && c.is_finite()) {
+            self.flows.push_back((now, a, b, c));
         }
-        while self.flows.front().is_some_and(|(t, _, _)| *t < now - self.period_secs - WINDOW_SECS * 2) {
+        while self.flows.front().is_some_and(|(t, _, _, _)| *t < now - self.period_secs - WINDOW_SECS * 2) {
             self.flows.pop_front();
         }
     }
@@ -90,7 +92,7 @@ impl LevelTracker {
         match self.slot {
             Some(prev) if slot > prev => {
                 let boundary = slot * self.period_secs;
-                self.marks.push_back((boundary, self.median_before(boundary), self.turbine_mean(boundary)));
+                self.marks.push_back((boundary, self.median_before(boundary), self.outflow_mean(boundary)));
                 if self.marks.len() > 2 {
                     self.marks.pop_front();
                 }
@@ -117,31 +119,32 @@ impl LevelTracker {
             return IntervalState::NoData;
         }
         let (from, z_from, _) = self.marks[0];
-        let (to, z_to, turbine) = self.marks[1];
-        match (z_from, z_to, turbine) {
-            (Some(z_from), Some(z_to), Some(turbine)) if from + self.period_secs == to => IntervalState::Ready(Interval {
+        let (to, z_to, outflow) = self.marks[1];
+        match (z_from, z_to, outflow) {
+            (Some(z_from), Some(z_to), Some(outflow)) if from + self.period_secs == to => IntervalState::Ready(Interval {
                 from: Mark { time: from, z: z_from },
                 to: Mark { time: to, z: z_to },
-                turbine,
+                outflow,
             }),
             _ => IntervalState::Missing { to },
         }
     }
 
     /// Trung bình lưu lượng tổ máy trong chu kỳ kết thúc ở `boundary`; `None` nếu dữ liệu phủ dưới 80 % chu kỳ.
-    fn turbine_mean(&self, boundary: i64) -> Option<TurbineMean> {
-        let v: Vec<&(i64, f64, f64)> = self.flows.iter().filter(|(t, _, _)| (boundary - self.period_secs < *t) && (*t <= boundary)).collect();
+    fn outflow_mean(&self, boundary: i64) -> Option<OutflowMean> {
+        let v: Vec<&(i64, f64, f64, f64)> = self.flows.iter().filter(|(t, _, _, _)| (boundary - self.period_secs < *t) && (*t <= boundary)).collect();
         let (first, last) = (v.first()?.0, v.last()?.0);
         if v.len() < 2 || (last - first) * 5 < self.period_secs * 4 {
             return None;
         }
         let n = v.len() as f64;
-        let share = |f: fn(&(i64, f64, f64)) -> f64| v.iter().filter(|s| crate::is_running(f(s))).count() as f64 / n;
-        Some(TurbineMean {
+        let share = |f: fn(&(i64, f64, f64, f64)) -> f64| v.iter().filter(|s| crate::is_running(f(s))).count() as f64 / n;
+        Some(OutflowMean {
             q_h1: v.iter().map(|s| s.1).sum::<f64>() / n,
             q_h2: v.iter().map(|s| s.2).sum::<f64>() / n,
             run_h1: share(|s| s.1),
             run_h2: share(|s| s.2),
+            q_eco: v.iter().map(|s| s.3).sum::<f64>() / n,
         })
     }
 
@@ -172,7 +175,7 @@ mod tests {
     fn feed(t: &mut LevelTracker, from: i64, to: i64, z: f64) {
         let mut s = from;
         while s < to {
-            t.push_flows(s, Some((0.0, 0.0)));
+            t.push_flows(s, Some((0.0, 0.0, 1.5)));
             t.push(s, Some(z));
             s += 5;
         }
@@ -203,7 +206,7 @@ mod tests {
             IntervalState::Ready(Interval {
                 from: Mark { time: T0, z: 157.000 },
                 to: Mark { time: T0 + P15, z: 157.050 },
-                turbine: TurbineMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0 },
+                outflow: OutflowMean { q_h1: 0.0, q_h2: 0.0, run_h1: 0.0, run_h2: 0.0, q_eco: 1.5 },
             })
         );
     }
@@ -263,28 +266,29 @@ mod tests {
         for k in 1..=180 {
             let now = T0 + 5 * k;
             let q1 = if k <= 120 { 16.0 } else { 0.0 };
-            t.push_flows(now, Some((q1, 0.0)));
+            t.push_flows(now, Some((q1, 0.0, 1.5)));
             t.push(now, Some(157.05));
         }
-        t.push_flows(T0 + 905, Some((0.0, 0.0)));
+        t.push_flows(T0 + 905, Some((0.0, 0.0, 1.5)));
         t.push(T0 + 905, Some(157.05));
         t
     }
 
     #[test]
-    fn turbine_mean_and_run_share_cover_only_the_interval() {
+    fn outflow_mean_and_run_share_cover_only_the_interval() {
         match with_h1_running_two_thirds().state() {
             IntervalState::Ready(i) => {
-                assert!((i.turbine.q_h1 - 16.0 * 120.0 / 180.0).abs() < 1e-9, "{:?}", i.turbine);
-                assert!((i.turbine.run_h1 - 120.0 / 180.0).abs() < 1e-9);
-                assert_eq!((i.turbine.q_h2, i.turbine.run_h2), (0.0, 0.0));
+                assert!((i.outflow.q_h1 - 16.0 * 120.0 / 180.0).abs() < 1e-9, "{:?}", i.outflow);
+                assert!((i.outflow.run_h1 - 120.0 / 180.0).abs() < 1e-9);
+                assert_eq!((i.outflow.q_h2, i.outflow.run_h2), (0.0, 0.0));
+                assert_eq!(i.outflow.q_eco, 1.5);
             }
             s => panic!("{s:?}"),
         }
     }
 
     #[test]
-    fn missing_turbine_flows_make_the_interval_missing() {
+    fn missing_outflow_data_makes_the_interval_missing() {
         let mut t = LevelTracker::new(15);
         for s in (T0 - 120..T0 + P15 + 20).step_by(5) {
             t.push(s, Some(157.0));
@@ -293,12 +297,12 @@ mod tests {
     }
 
     #[test]
-    fn turbine_data_covering_under_eighty_percent_is_missing() {
+    fn outflow_data_covering_under_eighty_percent_is_missing() {
         let mut t = LevelTracker::new(15);
         feed(&mut t, T0 - 900 + 5, T0 + 1, 157.0);
         for s in (T0 + 5..T0 + P15 + 20).step_by(5) {
             if s > T0 + 400 {
-                t.push_flows(s, Some((16.0, 0.0)));
+                t.push_flows(s, Some((16.0, 0.0, 1.5)));
             }
             t.push(s, Some(157.0));
         }
