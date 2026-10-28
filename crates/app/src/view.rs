@@ -188,6 +188,11 @@ pub fn clock(unix: i64, tz_offset: i32) -> String {
     DateTime::from_timestamp(unix + tz_offset as i64, 0).map_or_else(|| "--:--".into(), |t| t.format("%H:%M").to_string())
 }
 
+/// `HH:MM:SS` theo giờ địa phương (`tz_offset` giây).
+pub fn clock_secs(unix: i64, tz_offset: i32) -> String {
+    DateTime::from_timestamp(unix + tz_offset as i64, 0).map_or_else(|| "--:--:--".into(), |t| t.format("%H:%M:%S").to_string())
+}
+
 /// "Cập nhật lúc 14:05" hoặc "Cập nhật lúc 14:05 – dữ liệu cũ".
 pub fn updated_label(fetched_at: i64, tz_offset: i32, stale: bool) -> String {
     let base = format!("Cập nhật lúc {}", clock(fetched_at, tz_offset));
@@ -201,6 +206,12 @@ pub fn updated_label(fetched_at: i64, tz_offset: i32, stale: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clock_secs_uses_the_local_offset() {
+        assert_eq!(clock_secs(0, 7 * 3600), "07:00:00");
+        assert_eq!(clock_secs(3_661, 7 * 3600), "08:01:01");
+    }
 
     #[test]
     fn display_time_is_day_first_with_seconds() {

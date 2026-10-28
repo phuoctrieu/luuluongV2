@@ -46,6 +46,11 @@ impl Form {
         &mut self.values[f.index()]
     }
 
+    /// Điền mực nước (m) kiểu Việt, làm tròn tới mm như thiết bị đo.
+    pub fn set_level(&mut self, f: Field, z: f64) {
+        *self.get_mut(f) = crate::view::vn((z * 1000.0).round() / 1000.0);
+    }
+
     pub fn clear(&mut self) {
         *self = Self::default();
     }
@@ -133,6 +138,24 @@ pub fn validate(form: &Form, table: &VolumeTable) -> Result<Inputs, Vec<(Field, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn set_level_writes_vietnamese_decimals_that_validate() {
+        let mut f = Form::default();
+        f.set_level(Field::ZEnd, 157.192);
+        f.set_level(Field::ZStart, 160.0);
+        assert_eq!((f.get(Field::ZEnd), f.get(Field::ZStart)), ("157,192", "160"));
+        *f.get_mut(Field::Hours) = "0,25".into();
+        let i = validate(&f, &VolumeTable::builtin()).unwrap();
+        assert_eq!((i.z_start, i.z_end), (160.0, 157.192));
+    }
+
+    #[test]
+    fn set_level_rounds_logger_noise_to_a_millimetre() {
+        let mut f = Form::default();
+        f.set_level(Field::ZEnd, 157.19200000000001);
+        assert_eq!(f.get(Field::ZEnd), "157,192");
+    }
 
     fn form(vals: [&str; 8]) -> Form {
         let mut f = Form::default();

@@ -66,6 +66,7 @@ impl App {
                 let minutes = config.weather.refresh_minutes;
                 self.config = config;
                 self.sync_sources();
+                self.sync_live();
                 if source_changed || minutes != self.scheduler_minutes() {
                     self.scheduler = super::Scheduler::new(minutes);
                 }
@@ -130,6 +131,24 @@ impl App {
             form_grid("turbine").show(ui, |ui| {
                 text_row(ui, p, "Lưu lượng mỗi giờ chạy máy H1", "m³/s", &mut self.settings.q_h1, error_for(&errors, SettingsField::QH1));
                 text_row(ui, p, "Lưu lượng mỗi giờ chạy máy H2", "m³/s", &mut self.settings.q_h2, error_for(&errors, SettingsField::QH2));
+            });
+        });
+        ui.add_space(12.0);
+
+        card(p).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            title(ui, p, "Thiết bị đo mực nước (ECAPRO)");
+            ui.add_space(8.0);
+            form_grid("logger").show(ui, |ui| {
+                form_row(ui, "Địa chỉ thiết bị", |ui| {
+                    let r = ui.add(egui::TextEdit::singleline(&mut self.settings.logger_url).desired_width(420.0).margin(Margin::symmetric(8, 8)));
+                    if let Some(e) = error_for(&errors, SettingsField::LoggerUrl) {
+                        ui.painter().rect_stroke(r.rect, egui::CornerRadius::same(8), egui::Stroke::new(1.5_f32, p.error), egui::StrokeKind::Outside);
+                        app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new(e.to_string()));
+                    }
+                });
+                text_row(ui, p, "Đọc thiết bị sau mỗi", "giây", &mut self.settings.logger_poll, error_for(&errors, SettingsField::LoggerPoll));
+                text_row(ui, p, "Xả môi trường cộng vào lưu lượng về", "m³/s", &mut self.settings.logger_eco_q, error_for(&errors, SettingsField::LoggerEco));
             });
         });
         ui.add_space(12.0);

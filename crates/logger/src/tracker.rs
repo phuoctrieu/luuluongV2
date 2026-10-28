@@ -81,6 +81,11 @@ impl LevelTracker {
         self.latest
     }
 
+    /// Mốc gần nhất nếu chốt được mực nước.
+    pub fn last_mark(&self) -> Option<Mark> {
+        self.marks.back().and_then(|&(time, z)| z.map(|z| Mark { time, z }))
+    }
+
     pub fn state(&self) -> IntervalState {
         let Some(&(to, z_to)) = self.marks.back() else {
             return IntervalState::NoData;
@@ -205,6 +210,19 @@ mod tests {
             IntervalState::Ready(i) => assert_eq!((i.from.time, i.to.time), (T0, T0 + 1_800)),
             s => panic!("{s:?}"),
         }
+    }
+
+    #[test]
+    fn last_mark_is_the_newest_boundary_with_a_level() {
+        let mut t = LevelTracker::new(15);
+        assert_eq!(t.last_mark(), None);
+        feed(&mut t, T0 - 120, T0 + 20, 157.0);
+        assert_eq!(t.last_mark(), Some(Mark { time: T0, z: 157.0 }));
+        // mốc sau mất kết nối: không có mốc mới, nhưng mốc cũ không bị coi là "gần nhất" nữa
+        for s in (T0 + 20..T0 + P15 + 20).step_by(5) {
+            t.push(s, None);
+        }
+        assert_eq!(t.last_mark(), None);
     }
 
     #[test]

@@ -30,6 +30,12 @@ pub enum FlowView {
     Ready(Flow),
 }
 
+/// Mốc đồng hồ kế tiếp (giây epoch) sau `now`, với chu kỳ 15 hoặc 30 phút.
+pub fn next_boundary(now: i64, period_minutes: u32) -> i64 {
+    let p = i64::from(period_minutes) * 60;
+    (now.div_euclid(p) + 1) * p
+}
+
 pub struct Live {
     tracker: LevelTracker,
     period: u32,
@@ -53,6 +59,11 @@ impl Live {
 
     pub fn set_eco_q(&mut self, eco_q: f64) {
         self.eco_q = eco_q;
+    }
+
+    /// Mực nước ở mốc đồng hồ gần nhất (làm "mực nước chu kỳ trước" cho tính bằng tay).
+    pub fn last_mark(&self) -> Option<Mark> {
+        self.tracker.last_mark()
     }
 
     pub fn period(&self) -> u32 {
@@ -123,6 +134,22 @@ mod tests {
     fn two_periods(l: &mut Live, z0: f64, z1: f64) {
         feed(l, T0 - 120, T0 + 900 - 60, ok(z0));
         feed(l, T0 + 900 - 60, T0 + 900 + 20, ok(z1));
+    }
+
+    #[test]
+    fn next_boundary_is_strictly_after_now_on_the_clock_grid() {
+        assert_eq!(next_boundary(T0 + 1, 15), T0 + 900);
+        assert_eq!(next_boundary(T0, 15), T0 + 900);
+        assert_eq!(next_boundary(T0 + 899, 15), T0 + 900);
+        assert_eq!(next_boundary(T0 + 901, 30), T0 + 1_800);
+    }
+
+    #[test]
+    fn last_mark_follows_the_tracker() {
+        let mut l = Live::new(15, 1.5);
+        assert_eq!(l.last_mark(), None);
+        two_periods(&mut l, 160.0, 160.1);
+        assert_eq!(l.last_mark(), Some(Mark { time: T0 + 900, z: 160.1 }));
     }
 
     #[test]

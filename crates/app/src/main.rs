@@ -2,9 +2,11 @@
 
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use app::chart;
+use app::live::Live;
 use app::form::{validate, Field, Form};
 use app::paint;
 use app::schedule::Scheduler;
@@ -18,12 +20,14 @@ use luuluong_storage::config::Config;
 use luuluong_storage::history::{vn_timestamp, History, Record};
 use luuluong_storage::secret::{KeyringStore, SecretStore};
 use luuluong_storage::table_loader::load_volume_table;
+use luuluong_logger::poller::{self, Sample, Target};
 use luuluong_weather::multi::{fetch_all, SourceResult};
 use luuluong_weather::free::FreeProvider;
 use luuluong_weather::openmeteo::{Model, OpenMeteoProvider};
 use luuluong_weather::{cache, Snapshot, Source, WeatherError};
 
 mod history_screen;
+mod live_screen;
 mod radar_screen;
 mod settings_screen;
 
@@ -84,6 +88,7 @@ fn open_folder(path: &std::path::Path) {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
+    Live,
     Calc,
     History,
     Settings,
@@ -108,6 +113,9 @@ struct App {
     scheduler: Scheduler,
     tx: Sender<WeatherResult>,
     rx: Receiver<WeatherResult>,
+    live: Live,
+    live_rx: Receiver<Sample>,
+    live_target: Arc<Mutex<Target>>,
     api_key: String,
     cache_path: Option<PathBuf>,
     config: Config,
@@ -184,8 +192,13 @@ impl App {
         let tab = match std::env::args().find_map(|a| a.strip_prefix("--tab=").map(str::to_owned)).as_deref() {
             Some("history") => Tab::History,
             Some("settings") => Tab::Settings,
-            _ => Tab::Calc,
+            Some("calc") => Tab::Calc,
+            _ => Tab::Live,
         };
+        let live_target = Arc::new(Mutex::new(Target { url: config.logger.url.clone(), poll: Duration::from_secs(config.logger.poll().into()) }));
+        let (live_tx, live_rx) = channel();
+        let wake_ctx = cc.egui_ctx.clone();
+        poller::spawn(live_target.clone(), live_tx, move || wake_ctx.request_repaint());
         Self {
             table,
             turbine: Turbine { q_h1: config.turbine.q_h1, q_h2: config.turbine.q_h2 },
@@ -203,6 +216,9 @@ impl App {
             scheduler: Scheduler::new(config.weather.refresh_minutes),
             tx,
             rx,
+            live: Live::new(config.logger.period(), config.logger.eco_q),
+            live_rx,
+            live_target,
             api_key,
             cache_path,
             settings: SettingsForm::from_config(&config),
@@ -371,13 +387,14 @@ impl App {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        let (calc, clear, t1, t2, t3, refresh) = ctx.input_mut(|i| {
+        let (calc, clear, t1, t2, t3, t4, refresh) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::COMMAND, Key::Enter),
                 i.consume_key(Modifiers::COMMAND, Key::Backspace),
                 i.consume_key(Modifiers::COMMAND, Key::Num1),
                 i.consume_key(Modifiers::COMMAND, Key::Num2),
                 i.consume_key(Modifiers::COMMAND, Key::Num3),
+                i.consume_key(Modifiers::COMMAND, Key::Num4),
                 i.consume_key(Modifiers::COMMAND, Key::R),
             )
         });
@@ -391,10 +408,12 @@ impl App {
             self.clear();
         }
         if t1 {
-            self.tab = Tab::Calc;
+            self.tab = Tab::Live;
         } else if t2 {
-            self.tab = Tab::History;
+            self.tab = Tab::Calc;
         } else if t3 {
+            self.tab = Tab::History;
+        } else if t4 {
             self.tab = Tab::Settings;
         }
     }
@@ -480,6 +499,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let p = theme::palette(ctx);
         self.poll_weather(ctx);
+        self.poll_live();
         self.radar_tick(ctx);
 
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
@@ -515,7 +535,7 @@ impl eframe::App for App {
                                 .show(ui, |ui| {
                                     paint::note(ui, paint::Icon::Warn, p.on_error, 13.0, RichText::new(text).font(FontId::new(13.0, theme::semibold())));
                                 });
-                            let r = ui.interact(chip.response.rect, Id::new("rain_alert_chip"), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Xem chi tiết ở tab Tính toán");
+                            let r = ui.interact(chip.response.rect, Id::new("rain_alert_chip"), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Xem chi tiết ở tab Tính bằng tay");
                             goto_calc |= r.clicked();
                         }
                     });
@@ -530,7 +550,7 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::History, "Lịch sử", "2"), (Tab::Settings, "Cài đặt", "3")] {
+                    for (tab, name, key) in [(Tab::Live, "Hiện tại", "1"), (Tab::Calc, "Tính bằng tay", "2"), (Tab::History, "Lịch sử", "3"), (Tab::Settings, "Cài đặt", "4")] {
                         let active = self.tab == tab;
                         let text = if active {
                             RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
@@ -557,6 +577,7 @@ impl eframe::App for App {
                 area = area.vertical_scroll_offset(y);
             }
             area.show(ui, |ui| match self.tab {
+                Tab::Live => self.live_screen(ui, p),
                 Tab::Calc => self.calc_screen(ui, p),
                 Tab::History => self.history_screen(ui, p),
                 Tab::Settings => self.settings_screen(ui, p),
@@ -624,6 +645,8 @@ impl App {
                 {
                     let ui = &mut cols[0];
                     title(ui, p, "Thông số tính toán");
+                    ui.add_space(8.0);
+                    self.device_buttons(ui, p);
                     ui.add_space(8.0);
                     egui::Grid::new("inputs").num_columns(2).min_col_width(170.0).spacing([12.0, 10.0]).show(ui, |ui| {
                         for f in [Field::ZStart, Field::ZEnd, Field::Hours, Field::H1, Field::H2] {
