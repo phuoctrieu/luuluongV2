@@ -5,6 +5,6 @@ pub mod error;
 pub mod reservoir;
 pub mod validate;
 
-pub use balance::{compute, Inputs, Outputs, Turbine};
+pub use balance::{compute, inflow_between_levels, Inputs, Outputs, Turbine};
 pub use error::CalcError;
 pub use reservoir::VolumeTable;

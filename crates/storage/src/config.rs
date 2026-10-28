@@ -12,6 +12,7 @@ pub struct Config {
     pub turbine: Turbine,
     pub weather: Weather,
     pub ui: Ui,
+    pub logger: Logger,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,6 +56,41 @@ pub struct Ui {
     pub operator: String,
     /// Hiệu ứng động (mưa, mây, radar tự phát). Tắt cho người nhạy cảm với chuyển động.
     pub animations: bool,
+}
+
+/// Data logger ECAPRO đo mực nước hồ (xem `luuluong-logger`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Logger {
+    pub url: String,
+    /// Chu kỳ đọc thiết bị (giây).
+    pub poll_seconds: u32,
+    /// Chu kỳ tính lưu lượng về: 15 hoặc 30 phút (xem `period`).
+    pub period_minutes: u32,
+    /// Lưu lượng xả môi trường cộng vào lưu lượng về mỗi chu kỳ (m³/s).
+    pub eco_q: f64,
+}
+
+impl Default for Logger {
+    fn default() -> Self {
+        Self {
+            url: "http://192.168.200.211:8880/macros/UpdateMonitor".into(),
+            poll_seconds: 5,
+            period_minutes: 15,
+            eco_q: 1.5,
+        }
+    }
+}
+
+impl Logger {
+    /// Giá trị khác 15/30 (file sửa tay) được đưa về 15.
+    pub fn period(&self) -> u32 {
+        if self.period_minutes == 30 { 30 } else { 15 }
+    }
+
+    pub fn poll(&self) -> u32 {
+        if self.poll_seconds == 0 { 5 } else { self.poll_seconds }
+    }
 }
 
 impl Default for Reservoir {
@@ -169,6 +205,32 @@ mod tests {
         let w = Config::load(&path).unwrap().weather;
         assert_eq!(w.source, "openweather");
         assert_eq!(w.sources, Weather::default().sources);
+    }
+
+    #[test]
+    fn logger_defaults_and_old_files_still_load() {
+        let l = Config::default().logger;
+        assert_eq!(l.url, "http://192.168.200.211:8880/macros/UpdateMonitor");
+        assert_eq!((l.poll_seconds, l.period_minutes, l.eco_q), (5, 15, 1.5));
+        let path = temp("cu3.toml");
+        std::fs::write(&path, "[logger]\nperiod_minutes = 30\n").unwrap();
+        let l = Config::load(&path).unwrap().logger;
+        assert_eq!((l.period_minutes, l.poll_seconds, l.eco_q), (30, 5, 1.5));
+    }
+
+    #[test]
+    fn logger_period_only_accepts_15_or_30() {
+        for (raw, want) in [(15, 15), (30, 30), (0, 15), (20, 15), (60, 15)] {
+            let l = Logger { period_minutes: raw, ..Logger::default() };
+            assert_eq!(l.period(), want, "period_minutes = {raw}");
+        }
+    }
+
+    #[test]
+    fn logger_poll_seconds_is_never_zero() {
+        let l = Logger { poll_seconds: 0, ..Logger::default() };
+        assert_eq!(l.poll(), 5);
+        assert_eq!(Logger { poll_seconds: 10, ..Logger::default() }.poll(), 10);
     }
 
     #[test]
