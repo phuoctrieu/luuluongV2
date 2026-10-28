@@ -78,7 +78,16 @@ Không thêm dependency ngoài: tái dùng `ureq` (đã có ở `luuluong-weathe
 - [x] E7 Lưu lịch sử: mỗi mốc có Q về ghi một dòng vào SQLite (cột `source` = "logger" / "tay" để phân biệt), xuất CSV như cũ — kiểm tra: test `history.rs` ghi/đọc/xuất CSV có cột mới; CSV cũ vẫn mở được
 - [ ] E8 Cập nhật `MAP.md`, `contexte/mo-hinh-tinh-toan.md` (cách tính Q chu kỳ + ví dụ số), nghiệm thu: `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, thử trên mạng LAN thật `192.168.200.x` (chưa thử được nếu không ở nhà máy) — kiểm tra: ghi rõ phần đã/chưa thử thật
 
-Đã chốt (2026-10-28): Q về không tính tuabin, chỉ tính xả môi trường 1,5 m³/s; mốc chu kỳ cố định theo đồng hồ. Cần xác nhận: 1,5 m³/s được CỘNG vào ΔV/Δt (nước xả đi nên lượng về lớn hơn mực nước tăng), không phải trừ.
+### Giai đoạn 6b — Đọc lưu lượng tổ máy (kênh 5, 6) và gộp vào màn Tính toán (yêu cầu 2026-10-28)
+Thay đổi so với 6: logger có kênh 5 "LUU LUONG MAY 1" (H1) và 6 "LUU LUONG MAY 2" (H2), đơn vị m³/s (ví dụ H1 chạy = 16,54; hai máy ≈ 33). Tự nhận biết máy chạy/dừng; Q về PHẢI tính tuabin (thay cho "không tính tuabin" ở trên). Mực nước + lưu lượng về nằm chung màn **Tính toán**, không tách tab riêng.
+Công thức mục 3 giữ nguyên: `V_tuabin = (H1·Q1 + H2·Q2)·3600` với H = giờ trong chu kỳ, Q = lưu lượng đo trung bình trong chu kỳ (số đo thay cho hằng số 17,3); cộng thêm xả môi trường 1,5.
+- [x] F1 logger: `Reading` thêm `q_h1`, `q_h2` (`Option<f64>`, None nếu thiếu kênh hoặc kênh báo trạng thái 0); `RUNNING_MIN_Q` = 1,0 m³/s: lớn hơn thì máy "đang chạy" — kiểm tra: test parse đúng mẫu của người dùng (16,54 và 0), thiếu kênh 5/6 → None, kênh 16 vẫn là mực nước
+- [x] F2 core: `inflow_between_levels(..., eco_q, q_h1, q_h2)` — kiểm tra: mực nước không đổi, H1 = 16,54 → Q = 18,04; hai máy 33,08 → 34,58; T1–T6 vẫn pass
+- [x] F3 tracker: trung bình lưu lượng mỗi máy và tỷ lệ thời gian chạy trong chu kỳ; thiếu phủ (< 80 % chu kỳ) hoặc không có dữ liệu tổ máy → chu kỳ "thiếu số liệu" — kiểm tra: test trung bình, máy dừng giữa chu kỳ, thiếu dữ liệu
+- [x] F4 `live.rs` dùng số liệu tổ máy; lịch sử ghi giờ chạy H1/H2 thực tế — kiểm tra: test Flow có Q tuabin, `history_record` ghi h1/h2
+- [x] F5 Giao diện: bỏ tab Hiện tại; màn **Tính toán** có thẻ trực tuyến ở trên (mực nước, H1/H2 chạy/dừng + lưu lượng, lưu lượng về chu kỳ, chọn 15/30 phút), form tính tay bên dưới — kiểm tra: chụp ảnh 900×600 sáng/tối với 0, 1, 2 máy chạy bằng thiết bị giả
+
+Đã chốt (2026-10-28, phần xả môi trường và mốc đồng hồ vẫn đúng; phần tuabin bị 6b thay), chỉ tính xả môi trường 1,5 m³/s; mốc chu kỳ cố định theo đồng hồ. Cần xác nhận: 1,5 m³/s được CỘNG vào ΔV/Δt (nước xả đi nên lượng về lớn hơn mực nước tăng), không phải trừ.
 
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.

@@ -20,11 +20,27 @@ pub enum Status {
     High,
 }
 
+/// Lưu lượng qua tổ máy lớn hơn mức này (m³/s) thì coi là đang chạy; máy dừng đọc 0.
+pub const RUNNING_MIN_Q: f64 = 1.0;
+
+pub fn is_running(q: f64) -> bool {
+    q > RUNNING_MIN_Q
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Reading {
     /// Mực nước hồ (m).
     pub z: f64,
     pub status: Status,
+    /// Lưu lượng qua tổ máy H1, H2 (m³/s); `None` nếu thiếu kênh, kênh không kết nối hoặc không phải số.
+    pub q_h1: Option<f64>,
+    pub q_h2: Option<f64>,
+}
+
+impl Reading {
+    pub fn new(z: f64, status: Status) -> Self {
+        Reading { z, status, q_h1: None, q_h2: None }
+    }
 }
 
 /// Thông báo cho người vận hành; chi tiết kỹ thuật ghi log ở nơi gọi.
@@ -38,25 +54,38 @@ pub enum LoggerError {
     BadResponse,
 }
 
-/// Tìm dòng kênh 16 trong phản hồi: `max/min/avg,số kênh,tên,giá trị,đơn vị,trạng thái,...`.
+/// Các cột của dòng kênh `ch`: `max/min/avg,số kênh,tên,giá trị,đơn vị,trạng thái,...`.
+fn channel_fields<'a>(text: &'a str, ch: &str) -> Option<Vec<&'a str>> {
+    let line = text.lines().find(|l| l.split(',').nth(1).is_some_and(|c| c.trim() == ch))?;
+    Some(line.split(',').map(str::trim).collect())
+}
+
+fn status_of(f: &[&str]) -> Option<Status> {
+    match f.get(5).copied() {
+        Some("0") => Some(Status::Disconnected),
+        Some("1") => Some(Status::Normal),
+        Some("2") => Some(Status::Low),
+        Some("3") => Some(Status::High),
+        _ => None,
+    }
+}
+
+/// Lưu lượng tổ máy: `None` nếu thiếu kênh, kênh không kết nối hoặc giá trị không phải số.
+fn turbine_flow(text: &str, ch: &str) -> Option<f64> {
+    let f = channel_fields(text, ch)?;
+    let q: f64 = f.get(3)?.parse().ok().filter(|q: &f64| q.is_finite())?;
+    (status_of(&f)? != Status::Disconnected).then_some(q)
+}
+
+/// Đọc mực nước (kênh 16) và lưu lượng hai tổ máy (kênh 5, 6) từ phản hồi của thiết bị.
 pub fn parse_mntl(text: &str) -> Result<Reading, LoggerError> {
-    let line = text
-        .lines()
-        .find(|l| l.split(',').nth(1).is_some_and(|c| c.trim() == CHANNEL))
-        .ok_or(LoggerError::MissingChannel)?;
-    let f: Vec<&str> = line.split(',').map(str::trim).collect();
+    let f = channel_fields(text, CHANNEL).ok_or(LoggerError::MissingChannel)?;
     let z: f64 = f.get(3).and_then(|v| v.parse().ok()).ok_or(LoggerError::BadResponse)?;
     if !z.is_finite() {
         return Err(LoggerError::BadResponse);
     }
-    let status = match f.get(5).copied() {
-        Some("0") => Status::Disconnected,
-        Some("1") => Status::Normal,
-        Some("2") => Status::Low,
-        Some("3") => Status::High,
-        _ => return Err(LoggerError::BadResponse),
-    };
-    Ok(Reading { z, status })
+    let status = status_of(&f).ok_or(LoggerError::BadResponse)?;
+    Ok(Reading { z, status, q_h1: turbine_flow(text, "5"), q_h2: turbine_flow(text, "6") })
 }
 
 pub fn fetch(url: &str, timeout: Duration) -> Result<Reading, LoggerError> {
@@ -75,7 +104,29 @@ mod tests {
     #[test]
     fn parses_sample_line() {
         let r = parse_mntl(SAMPLE).unwrap();
-        assert_eq!(r, Reading { z: 157.192, status: Status::Normal });
+        assert_eq!(r, Reading::new(157.192, Status::Normal));
+    }
+
+    const H1_ON: &str = "16.5/ 0.0/ 8.0,5,LUU LUONG MAY 1,16.54,m3/s,1,0,0\n16.5/ 0.0/ 8.2,6,LUU LUONG MAY 2,0,m3/s,1,0,0";
+
+    #[test]
+    fn parses_turbine_flows_from_channels_5_and_6() {
+        let r = parse_mntl(&format!("{H1_ON}\n{SAMPLE}")).unwrap();
+        assert_eq!((r.q_h1, r.q_h2, r.z), (Some(16.54), Some(0.0), 157.192));
+    }
+
+    #[test]
+    fn missing_disconnected_or_bad_turbine_channels_are_none_not_errors() {
+        let r = parse_mntl(SAMPLE).unwrap();
+        assert_eq!((r.q_h1, r.q_h2), (None, None));
+        let r = parse_mntl(&format!("a,5,M1,16.54,m3/s,0,0,0\na,6,M2,abc,m3/s,1,0,0\n{SAMPLE}")).unwrap();
+        assert_eq!((r.q_h1, r.q_h2), (None, None));
+    }
+
+    #[test]
+    fn running_means_more_than_one_cubic_metre_per_second() {
+        assert!(is_running(16.54) && is_running(33.0));
+        assert!(!is_running(0.0) && !is_running(0.3) && !is_running(1.0));
     }
 
     #[test]

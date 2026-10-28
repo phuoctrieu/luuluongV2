@@ -63,17 +63,27 @@ pub fn compute(t: &VolumeTable, cfg: &Turbine, i: &Inputs) -> Result<Outputs, Ca
     Ok(Outputs { v_start, v_end, delta_v, v_turbine, v_release, q_in: w_in / (i.hours * 3600.0), w_in })
 }
 
-/// Lưu lượng về giữa hai mực nước đo liên tiếp: ΔV/Δt cộng xả môi trường `eco_q` (m³/s),
-/// không tính tuabin và xả tràn. Là `compute` với H1 = H2 = 0.
+/// Lưu lượng về giữa hai mực nước đo liên tiếp: ΔV/Δt + tuabin + xả môi trường `eco_q` (m³/s).
+/// `q_h1`, `q_h2` là lưu lượng đo trung bình qua mỗi tổ máy trong cả chu kỳ (m³/s); không xả tràn.
+/// Là `compute` với số giờ chạy = cả chu kỳ và lưu lượng tổ máy = số đo.
 pub fn inflow_between_levels(
     t: &VolumeTable,
     z_prev: f64,
     z_now: f64,
     minutes: f64,
     eco_q: f64,
+    q_h1: f64,
+    q_h2: f64,
 ) -> Result<Outputs, CalcError> {
-    let i = Inputs { z_start: z_prev, z_end: z_now, hours: minutes / 60.0, h1: 0.0, h2: 0.0, spill_q: 0.0, spill_h: 0.0, eco_q };
-    compute(t, &Turbine::default(), &i)
+    if !q_h1.is_finite() || !q_h2.is_finite() {
+        return Err(CalcError::InvalidNumber);
+    }
+    if q_h1 < 0.0 || q_h2 < 0.0 {
+        return Err(CalcError::Negative);
+    }
+    let hours = minutes / 60.0;
+    let i = Inputs { z_start: z_prev, z_end: z_now, hours, h1: hours, h2: hours, spill_q: 0.0, spill_h: 0.0, eco_q };
+    compute(t, &Turbine { q_h1, q_h2 }, &i)
 }
 
 #[cfg(test)]
@@ -81,15 +91,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inflow_adds_measured_turbine_flow() {
+        let t = VolumeTable::builtin();
+        let one = inflow_between_levels(&t, 160.0, 160.0, 15.0, 1.5, 16.54, 0.0).unwrap();
+        assert!((one.q_in - 18.04).abs() < 1e-9);
+        assert!((one.v_turbine - 16.54 * 900.0).abs() < 1e-6);
+        let two = inflow_between_levels(&t, 160.0, 160.0, 30.0, 1.5, 16.54, 16.54).unwrap();
+        assert!((two.q_in - 34.58).abs() < 1e-9);
+    }
+
+    #[test]
+    fn inflow_rejects_negative_or_non_finite_turbine_flow() {
+        let t = VolumeTable::builtin();
+        assert!(inflow_between_levels(&t, 160.0, 160.0, 15.0, 1.5, -1.0, 0.0).is_err());
+        assert!(inflow_between_levels(&t, 160.0, 160.0, 15.0, 1.5, 0.0, f64::NAN).is_err());
+    }
+
+    #[test]
     fn inflow_with_unchanged_level_equals_eco_release() {
-        let o = inflow_between_levels(&VolumeTable::builtin(), 160.0, 160.0, 15.0, 1.5).unwrap();
+        let o = inflow_between_levels(&VolumeTable::builtin(), 160.0, 160.0, 15.0, 1.5, 0.0, 0.0).unwrap();
         assert!((o.q_in - 1.5).abs() < 1e-9);
     }
 
     #[test]
     fn inflow_adds_eco_release_to_storage_change() {
         let t = VolumeTable::builtin();
-        let o = inflow_between_levels(&t, 160.0, 160.1, 15.0, 1.5).unwrap();
+        let o = inflow_between_levels(&t, 160.0, 160.1, 15.0, 1.5, 0.0, 0.0).unwrap();
         let dv = t.volume(160.1).unwrap() * 1e6 - t.volume(160.0).unwrap() * 1e6;
         assert!((o.q_in - (dv / 900.0 + 1.5)).abs() < 1e-9);
         assert_eq!(o.v_turbine, 0.0);
@@ -100,16 +127,16 @@ mod tests {
         let t = VolumeTable::builtin();
         let i = Inputs { z_start: 158.0, z_end: 157.9, hours: 0.5, h1: 0.0, h2: 0.0, spill_q: 0.0, spill_h: 0.0, eco_q: 1.5 };
         let want = compute(&t, &Turbine::default(), &i).unwrap();
-        let got = inflow_between_levels(&t, 158.0, 157.9, 30.0, 1.5).unwrap();
+        let got = inflow_between_levels(&t, 158.0, 157.9, 30.0, 1.5, 0.0, 0.0).unwrap();
         assert_eq!(got.q_in, want.q_in);
     }
 
     #[test]
     fn inflow_rejects_levels_outside_table_and_bad_minutes() {
         let t = VolumeTable::builtin();
-        assert!(inflow_between_levels(&t, 148.9, 150.0, 15.0, 1.5).is_err());
-        assert!(inflow_between_levels(&t, 150.0, 165.1, 15.0, 1.5).is_err());
-        assert!(inflow_between_levels(&t, 150.0, 150.0, 0.0, 1.5).is_err());
+        assert!(inflow_between_levels(&t, 148.9, 150.0, 15.0, 1.5, 0.0, 0.0).is_err());
+        assert!(inflow_between_levels(&t, 150.0, 165.1, 15.0, 1.5, 0.0, 0.0).is_err());
+        assert!(inflow_between_levels(&t, 150.0, 150.0, 0.0, 1.5, 0.0, 0.0).is_err());
     }
 
     fn inputs(z_start: f64, z_end: f64, hours: f64, h1: f64, h2: f64) -> Inputs {
