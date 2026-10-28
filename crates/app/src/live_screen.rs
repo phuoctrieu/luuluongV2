@@ -110,7 +110,6 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
                 Some(Status::Normal) => (Icon::Ok, p.primary, "Thiết bị đo hoạt động bình thường.".into()),
                 Some(Status::Low) => (Icon::Warn, p.error, "Thiết bị báo mực nước thấp.".into()),
                 Some(Status::High) => (Icon::Warn, p.error, "Thiết bị báo mực nước cao.".into()),
-                Some(Status::Disconnected) => (Icon::Warn, p.error, "Cảm biến mực nước không kết nối.".into()),
                 None => (Icon::Info, p.muted, "Đang chờ dữ liệu từ thiết bị…".into()),
             }
         };

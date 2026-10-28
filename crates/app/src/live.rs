@@ -139,11 +139,11 @@ impl Live {
         }
         self.tracker.push_flows(now, flows);
         match &result {
-            Ok(r) if r.status != Status::Disconnected => {
+            Ok(r) => {
                 self.latest = Some((now, r.z));
                 self.tracker.push(now, Some(r.z));
             }
-            _ => self.tracker.push(now, None),
+            Err(_) => self.tracker.push(now, None),
         }
         self.last = Some(result);
     }
@@ -361,12 +361,12 @@ mod tests {
     }
 
     #[test]
-    fn disconnected_sensor_keeps_old_level_and_breaks_the_interval() {
+    fn read_failures_keep_old_level_and_break_the_interval() {
         let mut l = Live::new(15, 1.5);
         feed(&mut l, T0 - 120, T0 + 900 - 120, ok(157.0));
-        feed(&mut l, T0 + 900 - 120, T0 + 900 + 20, Ok(Reading::new(0.0, Status::Disconnected)));
+        feed(&mut l, T0 + 900 - 120, T0 + 900 + 20, Err(LoggerError::Unreachable));
         assert_eq!(l.level().map(|(_, z)| z), Some(157.0));
-        assert_eq!(l.status(), Some(Status::Disconnected));
+        assert_eq!(l.error(), Some(&LoggerError::Unreachable));
         assert_eq!(l.flow(&VolumeTable::builtin()), FlowView::Missing { to: T0 + 900 });
     }
 

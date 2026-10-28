@@ -11,10 +11,10 @@ use thiserror::Error;
 /// Số kênh của "MNTL hien tai" trên thiết bị.
 const CHANNEL: &str = "16";
 
-/// Trạng thái kênh theo thiết bị: 0 = không kết nối, 1 = bình thường, 2 = báo thấp, 3 = báo cao.
+/// Cột trạng thái của kênh. Trên thiết bị thật cả 0 và 1 đều đi kèm số đo đúng (kênh 16 báo 0 nhưng
+/// khớp kênh 9 và 15), nên 0 KHÔNG được coi là mất kết nối; chỉ 2 và 3 là cảnh báo của thiết bị.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
-    Disconnected,
     Normal,
     Low,
     High,
@@ -32,7 +32,7 @@ pub struct Reading {
     /// Mực nước hồ (m).
     pub z: f64,
     pub status: Status,
-    /// Lưu lượng qua tổ máy H1, H2 (m³/s); `None` nếu thiếu kênh, kênh không kết nối hoặc không phải số.
+    /// Lưu lượng qua tổ máy H1, H2 (m³/s); `None` nếu thiếu kênh hoặc không phải số.
     pub q_h1: Option<f64>,
     pub q_h2: Option<f64>,
 }
@@ -62,19 +62,18 @@ fn channel_fields<'a>(text: &'a str, ch: &str) -> Option<Vec<&'a str>> {
 
 fn status_of(f: &[&str]) -> Option<Status> {
     match f.get(5).copied() {
-        Some("0") => Some(Status::Disconnected),
-        Some("1") => Some(Status::Normal),
+        Some("0" | "1") => Some(Status::Normal),
         Some("2") => Some(Status::Low),
         Some("3") => Some(Status::High),
         _ => None,
     }
 }
 
-/// Lưu lượng tổ máy: `None` nếu thiếu kênh, kênh không kết nối hoặc giá trị không phải số.
+/// Lưu lượng tổ máy: `None` nếu thiếu kênh hoặc giá trị không phải số.
 fn turbine_flow(text: &str, ch: &str) -> Option<f64> {
     let f = channel_fields(text, ch)?;
     let q: f64 = f.get(3)?.parse().ok().filter(|q: &f64| q.is_finite())?;
-    (status_of(&f)? != Status::Disconnected).then_some(q)
+    Some(q)
 }
 
 /// Đọc mực nước (kênh 16) và lưu lượng hai tổ máy (kênh 5, 6) từ phản hồi của thiết bị.
@@ -116,11 +115,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_disconnected_or_bad_turbine_channels_are_none_not_errors() {
+    fn missing_or_bad_turbine_channels_are_none_not_errors() {
         let r = parse_mntl(SAMPLE).unwrap();
         assert_eq!((r.q_h1, r.q_h2), (None, None));
-        let r = parse_mntl(&format!("a,5,M1,16.54,m3/s,0,0,0\na,6,M2,abc,m3/s,1,0,0\n{SAMPLE}")).unwrap();
+        let r = parse_mntl(&format!("a,5,M1,xyz,m3/s,1,0,0\na,6,M2,abc,m3/s,1,0,0\n{SAMPLE}")).unwrap();
         assert_eq!((r.q_h1, r.q_h2), (None, None));
+        let r = parse_mntl(&format!("a,5,M1,16.54,m3/s,0,0,0\n{SAMPLE}")).unwrap();
+        assert_eq!(r.q_h1, Some(16.54), "trạng thái 0 không làm mất số đo");
     }
 
     #[test]
@@ -135,10 +136,35 @@ mod tests {
         assert_eq!(parse_mntl(&text).unwrap().z, 157.192);
     }
 
+    /// Phản hồi thật của thiết bị (curl ngày 2026-10-28). Kênh 16 có trạng thái 0 nhưng giá trị vẫn đúng.
+    const REAL: &str = r#"33.0/ 0.0/ 3.0,1,LUU LUONG MUA,2.0,mm/h,1,0,0
+1.5/ 1.5/ 0.0,2,DCTT|LUULUONG,1.5,m3/s,1,0,0
+160.8/ 160.0/ 0.3,3,THUONGLUU|MUCNUOC,160.0,m,1,0,0
+20.1/ 0.0/ 2.8,4,LUU LUONG VE old,16.81,m3/s,0,0,0
+16.5/ 0.0/ 8.0,5,LUU LUONG MAY 1,16.54,m3/s,1,0,0
+16.5/ 0.0/ 8.2,6,LUU LUONG MAY 2,0,m3/s,1,0,0
+33.1/ 0.0/ 16.0,7,NHAMAY|LUULUONG,16.54,m3/s,0,0,0
+0/ 0/ 0.0,8,QUATRAN|LUULUONG,0,m3/s,0,0,0
+160.8/ 157.2/ 1.0,9,Htltc Old,157.188,m,0,0,0
+582/ 0/ 171.1,10,Time,213,,0,0,0
+34.6/ 2.5/ 12.8,11,DENHO|LUULUONG,18.04,m3/s,0,0,0
+1/ 0/ 0.5,12,TT,1,,0,0,0
+1.0/ 0.0/ 0.5,13,RS Time,1,,0,0,0
+20.1/ 0.0/ 2.8,14,LLVT new,17.67,m3/s,0,0,0
+160.8/ 157.2/ 1.0,15,Htltc Old t,157.188,m,0,0,0
+160.8/ 157.2/ 1.0,16,MNTL hien tai,157.189,m,0,0,0
+"#;
+
     #[test]
-    fn status_zero_is_disconnected() {
+    fn real_device_output_gives_level_and_machines_despite_status_zero() {
+        let r = parse_mntl(REAL).unwrap();
+        assert_eq!(r, Reading { z: 157.189, status: Status::Normal, q_h1: Some(16.54), q_h2: Some(0.0) });
+    }
+
+    #[test]
+    fn status_zero_still_carries_a_valid_value() {
         let r = parse_mntl("160.8/ 157.2/ 1.0,16,MNTL hien tai,157.192,m,0,0,0").unwrap();
-        assert_eq!(r.status, Status::Disconnected);
+        assert_eq!((r.z, r.status), (157.192, Status::Normal));
     }
 
     #[test]
