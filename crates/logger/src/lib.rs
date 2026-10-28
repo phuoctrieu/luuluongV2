@@ -20,11 +20,17 @@ pub enum Status {
     High,
 }
 
-/// Lưu lượng qua tổ máy lớn hơn mức này (m³/s) thì coi là đang chạy; máy dừng đọc 0.
-pub const RUNNING_MIN_Q: f64 = 1.0;
+/// Tổ máy chạy thì lưu lượng khoảng 16,5 m³/s; số đọc từ ngưỡng này trở xuống (thường 1–3 m³/s) là sai số
+/// cảm biến, máy đang dừng. Chủ dự án xác nhận 2026-10-28.
+pub const RUNNING_MIN_Q: f64 = 5.0;
 
 pub fn is_running(q: f64) -> bool {
     q > RUNNING_MIN_Q
+}
+
+/// Lưu lượng tổ máy sau khi bỏ nhiễu cảm biến: máy dừng thì 0, không cộng nhiễu vào lưu lượng về.
+fn machine_flow(q: f64) -> f64 {
+    if is_running(q) { q } else { 0.0 }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -86,7 +92,7 @@ pub fn parse_mntl(text: &str) -> Result<Reading, LoggerError> {
         return Err(LoggerError::BadResponse);
     }
     let status = status_of(&f).ok_or(LoggerError::BadResponse)?;
-    Ok(Reading { z, status, q_h1: channel_flow(text, "5"), q_h2: channel_flow(text, "6"), q_eco: channel_flow(text, "2") })
+    Ok(Reading { z, status, q_h1: channel_flow(text, "5").map(machine_flow), q_h2: channel_flow(text, "6").map(machine_flow), q_eco: channel_flow(text, "2") })
 }
 
 pub fn fetch(url: &str, timeout: Duration) -> Result<Reading, LoggerError> {
@@ -127,9 +133,18 @@ mod tests {
     }
 
     #[test]
-    fn running_means_more_than_one_cubic_metre_per_second() {
-        assert!(is_running(16.54) && is_running(33.0));
-        assert!(!is_running(0.0) && !is_running(0.3) && !is_running(1.0));
+    fn sensor_noise_up_to_a_few_cubic_metres_is_not_running() {
+        assert!(is_running(16.54) && is_running(16.5) && is_running(33.0));
+        for noise in [0.0, 0.3, 1.0, 2.0, 3.0, 5.0] {
+            assert!(!is_running(noise), "{noise} m³/s là nhiễu cảm biến");
+        }
+    }
+
+    #[test]
+    fn machine_noise_reads_as_zero_but_eco_release_is_kept_as_measured() {
+        let text = format!("a,2,DCTT,1.5,m3/s,1,0,0\na,5,M1,2.0,m3/s,1,0,0\na,6,M2,16.5,m3/s,1,0,0\n{SAMPLE}");
+        let r = parse_mntl(&text).unwrap();
+        assert_eq!((r.q_h1, r.q_h2, r.q_eco), (Some(0.0), Some(16.5), Some(1.5)));
     }
 
     #[test]

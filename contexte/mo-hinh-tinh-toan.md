@@ -6,7 +6,7 @@ Ghi chú vận hành: q mỗi tổ máy mặc định 17,3 m³/s (cần xác nh�
 ## Lưu lượng về theo chu kỳ từ data logger (giai đoạn 6)
 - Lưu lượng về LUÔN tự tính từ mực nước đầu/cuối chu kỳ, không lấy số "lưu lượng về" thiết bị tính sẵn (kênh 4, 14) — chủ dự án chốt 2026-10-28.
 - Số đo lấy từ ECAPRO GPIs6.6DA (`crates/logger`; cách gọi: `huong-dan-lay-mntl-hien-tai.md`): kênh 16 mực nước hồ, kênh 5/6 lưu lượng máy H1/H2, kênh 2 xả môi trường (m³/s). Máy chạy app phải cùng mạng LAN `192.168.200.x`.
-- Q về chu kỳ = ΔV/Δt + Q_H1 + Q_H2 + Q_xả môi trường, với Q là trung bình các lần đọc trong chu kỳ. Là `balance::inflow_between_levels` = `compute` với giờ chạy = cả chu kỳ, lưu lượng tổ máy = số đo. Ví dụ: mực nước không đổi, H1 = 16,54, xả 1,5 → Q = 18,04. Máy chạy khi lưu lượng > 1,0 m³/s.
+- Q về chu kỳ = ΔV/Δt + Q_H1 + Q_H2 + Q_xả môi trường, với Q là trung bình các lần đọc trong chu kỳ. Là `balance::inflow_between_levels` = `compute` với giờ chạy = cả chu kỳ, lưu lượng tổ máy = số đo. Ví dụ: mực nước không đổi, H1 = 16,54, xả 1,5 → Q = 18,04. Máy chạy khi lưu lượng > 5,0 m³/s (chạy thật ≈ 16,5); số đọc nhỏ hơn như 1–3 m³/s là nhiễu cảm biến: máy coi là dừng và lưu lượng tính bằng 0 (không cộng nhiễu vào lưu lượng về). Xả môi trường không lọc vì giá trị thật vốn nhỏ (≈ 1,5).
 - Chu kỳ 15 hoặc 30 phút, mốc cố định theo đồng hồ (:00/:15/:30/:45). Mực nước mỗi mốc là trung vị các lần đọc trong 1 phút trước mốc (khử nhiễu 1 mm).
 - Thiếu số liệu thì chu kỳ đó không tính, không nội suy, không giả định bằng 0: mất mực nước ở một mốc, thiếu kênh 5/6/2, dữ liệu phủ dưới 80 % chu kỳ, máy ngủ, mới mở app. Mới qua mốc đầu thì "đang chờ" mốc thứ hai (không phải lỗi). Đổi chu kỳ thì bắt đầu lại.
 - Mực nước ngoài 149–165 m: từ chối như tính tay.
