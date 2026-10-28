@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use app::form::Field;
-use app::live::{next_boundary, FlowView, VN_TZ};
+use app::live::{history_record, next_boundary, FlowView, VN_TZ};
 use app::paint::{self, Icon};
 use app::view;
 use eframe::egui::{self, Color32, FontId, RichText};
@@ -27,6 +27,16 @@ impl App {
                 }
             }
             self.live.record(now, result);
+        }
+        if let (Some(flow), Some(h)) = (self.live.take_unlogged(&self.table), &self.history) {
+            let record = history_record(&flow, self.live.period(), self.config.logger.eco_q);
+            match h.insert(&record) {
+                Ok(_) => {
+                    self.history_dirty = true;
+                    self.storage_warning = None;
+                }
+                Err(e) => self.storage_warning = Some(e.to_string()),
+            }
         }
     }
 

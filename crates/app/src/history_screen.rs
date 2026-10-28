@@ -88,7 +88,7 @@ impl App {
             ui.add_space(8.0);
             if self.history_rows.is_empty() {
                 let msg = if self.history_filter.trim().is_empty() {
-                    "Chưa có lần tính nào. Mỗi lần nhấn TÍNH sẽ được lưu tại đây."
+                    "Chưa có lần tính nào. Mỗi lần nhấn TÍNH và mỗi chu kỳ tính từ thiết bị sẽ được lưu tại đây."
                 } else {
                     "Không có lần tính nào trong ngày này."
                 };
@@ -99,7 +99,7 @@ impl App {
                 ui.label(RichText::new(t).font(FontId::new(12.0, theme::semibold())).color(p.primary));
             };
             egui::Grid::new("history_head").num_columns(8).min_col_width(70.0).spacing([16.0, 6.0]).show(ui, |ui| {
-                for t in ["Thời điểm", "Z đầu / cuối (m)", "Tính (giờ)", "H1 / H2 (giờ)", "Q (m³/s)", "W (m³)", "Người nhập", ""] {
+                for t in ["Thời điểm", "Z đầu / cuối (m)", "Tính (giờ)", "H1 / H2 (giờ)", "Q (m³/s)", "W (m³)", "Người nhập / nguồn", ""] {
                     head(ui, t);
                 }
                 ui.end_row();
@@ -115,7 +115,7 @@ impl App {
                         ui.label(format!("{} / {}", view::vn(r.h1), view::vn(r.h2)));
                         ui.label(RichText::new(format_vn(r.q_in, 2)).font(FontId::new(13.0, theme::semibold())).color(p.accent_text));
                         ui.label(format_vn(r.w_in, 2));
-                        ui.label(&r.operator);
+                        ui.label(if app::live::is_automatic(r) { "Tự động (ECAPRO)" } else { r.operator.as_str() });
                         if ui.small_button("Xóa").clicked() {
                             delete = Some(r.id);
                         }

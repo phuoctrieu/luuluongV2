@@ -4,6 +4,7 @@
 use luuluong_core::{inflow_between_levels, VolumeTable};
 use luuluong_logger::tracker::{IntervalState, LevelTracker, Mark};
 use luuluong_logger::{LoggerError, Reading, Status};
+use luuluong_storage::history::{vn_timestamp, Record};
 
 /// Múi giờ Việt Nam (giây), cố định UTC+7.
 pub const VN_TZ: i32 = 7 * 3600;
@@ -36,17 +37,49 @@ pub fn next_boundary(now: i64, period_minutes: u32) -> i64 {
     (now.div_euclid(p) + 1) * p
 }
 
+/// Ghi chú đánh dấu dòng lịch sử do ứng dụng tự lưu từ thiết bị.
+pub const AUTO_NOTE: &str = "Tự động từ thiết bị ECAPRO";
+
+pub fn is_automatic(r: &Record) -> bool {
+    r.note == AUTO_NOTE
+}
+
+fn mm(z: f64) -> f64 {
+    (z * 1000.0).round() / 1000.0
+}
+
+/// Dòng lịch sử cho một chu kỳ: Z đầu/cuối là hai mốc, không tuabin, không xả tràn.
+pub fn history_record(f: &Flow, period_minutes: u32, eco_q: f64) -> Record {
+    Record {
+        id: 0,
+        created_at: vn_timestamp(f.to.time),
+        z_start: mm(f.from.z),
+        z_end: mm(f.to.z),
+        hours: f64::from(period_minutes) / 60.0,
+        h1: 0.0,
+        h2: 0.0,
+        spill_q: 0.0,
+        spill_h: 0.0,
+        eco_q,
+        q_in: f.q_in,
+        w_in: f.q_in * f64::from(period_minutes) * 60.0,
+        operator: String::new(),
+        note: AUTO_NOTE.into(),
+    }
+}
+
 pub struct Live {
     tracker: LevelTracker,
     period: u32,
     eco_q: f64,
     last: Option<Result<Reading, LoggerError>>,
     latest: Option<(i64, f64)>,
+    logged_to: Option<i64>,
 }
 
 impl Live {
     pub fn new(period_minutes: u32, eco_q: f64) -> Self {
-        Self { tracker: LevelTracker::new(period_minutes), period: period_minutes, eco_q, last: None, latest: None }
+        Self { tracker: LevelTracker::new(period_minutes), period: period_minutes, eco_q, last: None, latest: None, logged_to: None }
     }
 
     /// Đổi chu kỳ: chốt lại từ đầu vì các mốc cũ nằm trên lưới khác.
@@ -64,6 +97,17 @@ impl Live {
     /// Mực nước ở mốc đồng hồ gần nhất (làm "mực nước chu kỳ trước" cho tính bằng tay).
     pub fn last_mark(&self) -> Option<Mark> {
         self.tracker.last_mark()
+    }
+
+    /// Chu kỳ vừa tính xong mà chưa được lấy lần nào (mỗi chu kỳ chỉ trả một lần, để lưu lịch sử).
+    pub fn take_unlogged(&mut self, table: &VolumeTable) -> Option<Flow> {
+        match self.flow(table) {
+            FlowView::Ready(f) if self.logged_to != Some(f.to.time) => {
+                self.logged_to = Some(f.to.time);
+                Some(f)
+            }
+            _ => None,
+        }
     }
 
     pub fn period(&self) -> u32 {
@@ -150,6 +194,53 @@ mod tests {
         assert_eq!(l.last_mark(), None);
         two_periods(&mut l, 160.0, 160.1);
         assert_eq!(l.last_mark(), Some(Mark { time: T0 + 900, z: 160.1 }));
+    }
+
+    #[test]
+    fn history_record_maps_a_flow_without_turbine_or_spill() {
+        let mut l = Live::new(15, 1.5);
+        two_periods(&mut l, 160.0, 160.1);
+        let FlowView::Ready(f) = l.flow(&VolumeTable::builtin()) else { panic!() };
+        let r = history_record(&f, 15, 1.5);
+        assert_eq!(r.created_at, vn_timestamp(T0 + 900));
+        assert!(r.created_at.ends_with("+07:00"));
+        assert_eq!((r.z_start, r.z_end, r.hours, r.eco_q), (160.0, 160.1, 0.25, 1.5));
+        assert_eq!((r.h1, r.h2, r.spill_q, r.spill_h), (0.0, 0.0, 0.0, 0.0));
+        assert_eq!(r.q_in, f.q_in);
+        assert!((r.w_in - f.q_in * 900.0).abs() < 1e-6);
+        assert!(is_automatic(&r));
+    }
+
+    #[test]
+    fn history_levels_are_rounded_to_a_millimetre() {
+        let f = Flow { from: Mark { time: T0, z: 157.19200000000001 }, to: Mark { time: T0 + 900, z: 157.2499999999 }, dz: 0.058, q_in: 2.0 };
+        let r = history_record(&f, 15, 1.5);
+        assert_eq!((r.z_start, r.z_end), (157.192, 157.25));
+    }
+
+    #[test]
+    fn hand_calculations_are_not_automatic() {
+        let mut l = Live::new(15, 1.5);
+        two_periods(&mut l, 160.0, 160.1);
+        let FlowView::Ready(f) = l.flow(&VolumeTable::builtin()) else { panic!() };
+        let mut r = history_record(&f, 15, 1.5);
+        r.note = String::new();
+        assert!(!is_automatic(&r));
+    }
+
+    #[test]
+    fn each_finished_interval_is_handed_out_once() {
+        let t = VolumeTable::builtin();
+        let mut l = Live::new(15, 1.5);
+        assert!(l.take_unlogged(&t).is_none());
+        two_periods(&mut l, 160.0, 160.1);
+        let first = l.take_unlogged(&t).expect("chu kỳ đầu");
+        assert_eq!(first.to.time, T0 + 900);
+        assert!(l.take_unlogged(&t).is_none());
+        feed(&mut l, T0 + 900 + 20, T0 + 1_800 - 60, ok(160.1));
+        feed(&mut l, T0 + 1_800 - 60, T0 + 1_800 + 20, ok(160.2));
+        assert_eq!(l.take_unlogged(&t).expect("chu kỳ kế").to.time, T0 + 1_800);
+        assert!(l.take_unlogged(&t).is_none());
     }
 
     #[test]
