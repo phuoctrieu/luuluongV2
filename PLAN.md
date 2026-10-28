@@ -81,7 +81,7 @@ Không thêm dependency ngoài: tái dùng `ureq` (đã có ở `luuluong-weathe
 ### Giai đoạn 6c — Xả môi trường đo từ kênh 2 (yêu cầu 2026-10-28)
 Lưu lượng về vẫn tự tính từ mực nước (không dùng kênh 4/14 của thiết bị). Xả môi trường lấy từ kênh 2 `DCTT|LUULUONG`, trung bình trong chu kỳ, thay hằng số 1,5; thiếu kênh 2 thì chu kỳ "thiếu số liệu". Đã bỏ `eco_q` khỏi `[logger]` và Cài đặt (file cũ còn khóa này vẫn nạp được). Đã sửa lỗi coi trạng thái 0 là mất kết nối (dữ liệu thật). 
 - [x] G1 logger/tracker/live/lịch sử/cài đặt dùng kênh 2 — test pass, clippy sạch
-- [ ] G2 Đối chiếu số app hiện lúc 10:30 với số tự tính từ nhật ký thiết bị giả (cùng đầu vào) — chưa xong
+- [x] G2 Đối chiếu 10:30 (thiết bị giả, trạng thái 0 ở kênh 16): app 68,89 m³/s = số tự tính từ nhật ký 68,89 (ΔZ +0,050; H1 16,54; H2 8,81; xả MT 1,666). Sửa ký tự → thiếu glyph thành "–"
 
 ### Giai đoạn 6b — Đọc lưu lượng tổ máy (kênh 5, 6) và gộp vào màn Tính toán (yêu cầu 2026-10-28)
 Thay đổi so với 6: logger có kênh 5 "LUU LUONG MAY 1" (H1) và 6 "LUU LUONG MAY 2" (H2), đơn vị m³/s (ví dụ H1 chạy = 16,54; hai máy ≈ 33). Tự nhận biết máy chạy/dừng; Q về PHẢI tính tuabin (thay cho "không tính tuabin" ở trên). Mực nước + lưu lượng về nằm chung màn **Tính toán**, không tách tab riêng.

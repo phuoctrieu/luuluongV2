@@ -147,7 +147,7 @@ Mốc theo đồng hồ; mực nước mỗi mốc là trung vị các lần đ�
                     Icon::Info,
                     p.muted,
                     format!(
-                        "Chu kỳ {} → {}: mực nước {sign}{} m; tổ máy trung bình H1 {} · H2 {} m³/s.",
+                        "Chu kỳ {} – {}: mực nước {sign}{} m; tổ máy trung bình H1 {} · H2 {} m³/s.",
                         clock(f.from.time),
                         clock(f.to.time),
                         format_vn(f.dz, 3),
