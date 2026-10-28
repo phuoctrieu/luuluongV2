@@ -37,7 +37,7 @@ pub struct Interval {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntervalState {
-    /// Chưa qua mốc nào có số liệu.
+    /// Chưa đủ hai mốc liên tiếp để xét một chu kỳ (mới mở app hoặc mới qua mốc đầu tiên).
     NoData,
     /// Chu kỳ vừa qua thiếu mực nước ở một trong hai mốc (mất kết nối, máy ngủ, mới mở app).
     Missing { to: i64 },
@@ -112,22 +112,20 @@ impl LevelTracker {
     }
 
     pub fn state(&self) -> IntervalState {
-        let Some(&(to, z_to, turbine)) = self.marks.back() else {
+        // Mới có một mốc (vừa mở app): chưa có chu kỳ nào để thiếu, chỉ là đang chờ mốc thứ hai.
+        if self.marks.len() < 2 {
             return IntervalState::NoData;
-        };
-        if self.marks.len() == 2 {
-            let (from, z_from, _) = self.marks[0];
-            if let (Some(z_from), Some(z_to), Some(turbine)) = (z_from, z_to, turbine) {
-                if from + self.period_secs == to {
-                    return IntervalState::Ready(Interval {
-                        from: Mark { time: from, z: z_from },
-                        to: Mark { time: to, z: z_to },
-                        turbine,
-                    });
-                }
-            }
         }
-        IntervalState::Missing { to }
+        let (from, z_from, _) = self.marks[0];
+        let (to, z_to, turbine) = self.marks[1];
+        match (z_from, z_to, turbine) {
+            (Some(z_from), Some(z_to), Some(turbine)) if from + self.period_secs == to => IntervalState::Ready(Interval {
+                from: Mark { time: from, z: z_from },
+                to: Mark { time: to, z: z_to },
+                turbine,
+            }),
+            _ => IntervalState::Missing { to },
+        }
     }
 
     /// Trung bình lưu lượng tổ máy trong chu kỳ kết thúc ở `boundary`; `None` nếu dữ liệu phủ dưới 80 % chu kỳ.
@@ -188,10 +186,11 @@ mod tests {
     }
 
     #[test]
-    fn first_boundary_alone_is_not_an_interval() {
+    fn first_boundary_alone_is_still_waiting_not_missing() {
         let mut t = LevelTracker::new(15);
         feed(&mut t, T0 - 120, T0 + 20, 157.0);
-        assert_eq!(t.state(), IntervalState::Missing { to: T0 });
+        assert_eq!(t.state(), IntervalState::NoData);
+        assert_eq!(t.last_mark(), Some(Mark { time: T0, z: 157.0 }));
     }
 
     #[test]
