@@ -80,6 +80,7 @@ dependencies = [
  "eframe",
  "egui_plot",
  "luuluong-core",
+ "luuluong-logger",
  "luuluong-storage",
  "luuluong-weather",
  "winresource",
