@@ -2,6 +2,7 @@
 
 use chrono::{Datelike, Days, Months, NaiveDate};
 use luuluong_storage::history::{RainObs, Record};
+use luuluong_storage::xlsx_report::{Cell, Sheet};
 
 use crate::averages::flow_between;
 use crate::live::VN_TZ;
@@ -43,8 +44,11 @@ pub struct Totals {
     pub rain_mean: Option<f64>,
 }
 
+/// Hai trạm đưa vào báo cáo (id, tên).
+pub const REPORT_STATIONS: [(&str, &str); 2] = [("841697470576", "Hương Nguyên"), ("84396786852", "A Đớt")];
+
 /// Nửa đêm giờ Việt Nam của ngày `d`.
-fn midnight(d: NaiveDate) -> i64 {
+pub fn midnight(d: NaiveDate) -> i64 {
     d.and_hms_opt(0, 0, 0).map_or(0, |t| t.and_utc().timestamp()) - i64::from(VN_TZ)
 }
 
@@ -149,6 +153,91 @@ pub fn parse_range(from: &str, to: &str, today: NaiveDate) -> Result<(NaiveDate,
         return Err("Khoảng báo cáo tối đa 10 năm.".into());
     }
     Ok((from, to))
+}
+
+fn num(v: Option<f64>) -> Cell {
+    v.map_or(Cell::Empty, Cell::Num)
+}
+
+fn vn_day(ts: i64) -> NaiveDate {
+    chrono::DateTime::from_timestamp(ts + i64::from(VN_TZ), 0).map_or(NaiveDate::MIN, |t| t.date_naive())
+}
+
+/// Khoảng thực sự được tính của kỳ, dạng `05/11/2026 – 05/11/2026`.
+pub fn span_label(p: &Period) -> String {
+    format!("{} – {}", vn_day(p.start).format("%d/%m/%Y"), vn_day(p.end - 1).format("%d/%m/%Y"))
+}
+
+fn percent(v: f64) -> Cell {
+    Cell::Num(v * 100.0)
+}
+
+/// Ba sheet theo thứ tự đã cho; `names` = tên hai trạm mưa.
+pub fn to_sheets(rows_by_g: [(Granularity, Vec<ReportRow>); 3], names: [&str; 2], from: NaiveDate, to: NaiveDate) -> Vec<Sheet> {
+    let range = format!("{} đến {}", from.format("%d/%m/%Y"), to.format("%d/%m/%Y"));
+    rows_by_g
+        .into_iter()
+        .map(|(g, rows)| {
+            let (name, unit) = match g {
+                Granularity::Day => ("Ngày", "ngày"),
+                Granularity::Month => ("Tháng", "tháng"),
+                Granularity::Year => ("Năm", "năm"),
+            };
+            let t = totals(&rows);
+            let total_secs: f64 = rows.iter().map(|r| (r.period.end - r.period.start) as f64).sum();
+            let covered_secs: f64 = rows.iter().map(|r| r.covered * (r.period.end - r.period.start) as f64).sum();
+            let rain_cov: Vec<f64> = rows.iter().filter_map(|r| r.rain_covered).collect();
+            let footer = vec![
+                Cell::Text("Tổng / bình quân".into()),
+                Cell::Empty,
+                num(t.q_avg),
+                num(t.volume_m3),
+                if total_secs > 0.0 { percent(covered_secs / total_secs) } else { Cell::Empty },
+                num(t.rain_mm[0]),
+                num(t.rain_mm[1]),
+                num(t.rain_mean),
+                if rain_cov.is_empty() { Cell::Empty } else { percent(rain_cov.iter().sum::<f64>() / rain_cov.len() as f64) },
+            ];
+            Sheet {
+                name: name.into(),
+                title: "Báo cáo lưu lượng về hồ Sông Bồ và mưa thượng nguồn".into(),
+                subtitle: format!("Theo {unit}, từ {range}"),
+                headers: vec![
+                    "Thời gian".into(),
+                    "Khoảng tính".into(),
+                    "Lưu lượng về TB (m³/s)".into(),
+                    "Tổng lượng về (m³)".into(),
+                    "Có số liệu (%)".into(),
+                    format!("Mưa {} (mm)", names[0]),
+                    format!("Mưa {} (mm)", names[1]),
+                    "Mưa TB 2 trạm (mm)".into(),
+                    "Có số liệu mưa (%)".into(),
+                ],
+                rows: rows
+                    .iter()
+                    .map(|r| {
+                        vec![
+                            Cell::Text(r.period.label.clone()),
+                            Cell::Text(span_label(&r.period)),
+                            num(r.q_avg),
+                            num(r.volume_m3),
+                            percent(r.covered),
+                            num(r.rain_mm[0]),
+                            num(r.rain_mm[1]),
+                            num(r.rain_mean),
+                            r.rain_covered.map_or(Cell::Empty, percent),
+                        ]
+                    })
+                    .collect(),
+                footer,
+                note: "Chỉ gồm thời gian app đã chạy và có số liệu; xem cột Có số liệu. Mưa là tổng các mốc giờ của Vrain (mốc 00:00 thuộc ngày trước). Mưa không đi vào công thức lưu lượng về.".into(),
+            }
+        })
+        .collect()
+}
+
+pub fn file_name(from: NaiveDate, to: NaiveDate) -> String {
+    format!("bao-cao-luu-luong-ve-{}-{}.xlsx", from.format("%d%m%Y"), to.format("%d%m%Y"))
 }
 
 #[cfg(test)]
@@ -301,6 +390,97 @@ mod tests {
         assert_eq!(t, Totals { volume_m3: None, q_avg: None, rain_mm: [None, None], rain_mean: None });
         assert_eq!(totals(&[]), t);
     }
+
+    fn day_row(date: NaiveDate, q: Option<f64>, covered: f64, rain: [Option<f64>; 2]) -> ReportRow {
+        let period = Period { label: date.format("%d/%m/%Y").to_string(), start: mid(date), end: mid(date) + 86_400 };
+        ReportRow {
+            volume_m3: q.map(|q| q * covered * 86_400.0),
+            period,
+            q_avg: q,
+            covered,
+            rain_mm: rain,
+            rain_mean: match rain {
+                [Some(a), Some(b)] => Some((a + b) / 2.0),
+                _ => None,
+            },
+            rain_covered: Some(0.5),
+        }
+    }
+
+    fn three(rows: Vec<ReportRow>) -> [(Granularity, Vec<ReportRow>); 3] {
+        [(Granularity::Day, rows.clone()), (Granularity::Month, rows.clone()), (Granularity::Year, rows)]
+    }
+
+    fn sheets(rows: Vec<ReportRow>) -> Vec<Sheet> {
+        to_sheets(three(rows), ["Hương Nguyên", "A Đớt"], d(2026, 1, 1), d(2026, 11, 5))
+    }
+
+    #[test]
+    fn sheets_from_rows_have_three_named_sheets_in_order() {
+        let s = sheets(vec![]);
+        assert_eq!(s.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["Ngày", "Tháng", "Năm"]);
+        assert!(s[0].subtitle.contains("01/01/2026") && s[0].subtitle.contains("05/11/2026"));
+    }
+
+    #[test]
+    fn sheet_columns_match_the_design() {
+        let r = day_row(d(2026, 11, 5), Some(20.0), 0.5, [Some(3.0), Some(4.0)]);
+        let s = &sheets(vec![r])[0];
+        assert_eq!(
+            s.headers,
+            [
+                "Thời gian",
+                "Khoảng tính",
+                "Lưu lượng về TB (m³/s)",
+                "Tổng lượng về (m³)",
+                "Có số liệu (%)",
+                "Mưa Hương Nguyên (mm)",
+                "Mưa A Đớt (mm)",
+                "Mưa TB 2 trạm (mm)",
+                "Có số liệu mưa (%)"
+            ]
+        );
+        assert_eq!(
+            s.rows[0],
+            vec![
+                Cell::Text("05/11/2026".into()),
+                Cell::Text("05/11/2026 – 05/11/2026".into()),
+                Cell::Num(20.0),
+                Cell::Num(864_000.0),
+                Cell::Num(50.0),
+                Cell::Num(3.0),
+                Cell::Num(4.0),
+                Cell::Num(3.5),
+                Cell::Num(50.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn blank_rows_become_empty_cells_but_coverage_stays_a_number() {
+        let r = day_row(d(2026, 11, 5), None, 0.0, [None, None]);
+        let row = &sheets(vec![r])[0].rows[0];
+        assert_eq!(row[2..4], [Cell::Empty, Cell::Empty]);
+        assert_eq!(row[4], Cell::Num(0.0));
+        assert_eq!(row[5..8], [Cell::Empty, Cell::Empty, Cell::Empty]);
+    }
+
+    #[test]
+    fn footer_contains_totals() {
+        let rows = vec![day_row(d(2026, 11, 4), Some(10.0), 1.0, [Some(1.0), Some(2.0)]), day_row(d(2026, 11, 5), Some(30.0), 1.0, [Some(3.0), None])];
+        let f = &sheets(rows)[0].footer;
+        assert_eq!(f[0], Cell::Text("Tổng / bình quân".into()));
+        assert_eq!(f[2], Cell::Num(20.0)); // bình quân theo thời gian
+        assert_eq!(f[3], Cell::Num((10.0 + 30.0) * 86_400.0)); // cộng
+        assert_eq!(f[4], Cell::Num(100.0));
+        assert_eq!(f[5..7], [Cell::Num(4.0), Cell::Num(2.0)]);
+    }
+
+    #[test]
+    fn file_name_uses_range() {
+        assert_eq!(file_name(d(2026, 1, 1), d(2026, 11, 5)), "bao-cao-luu-luong-ve-01012026-05112026.xlsx");
+    }
+
 
     #[test]
     fn parse_range_ok_and_errors() {

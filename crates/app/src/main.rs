@@ -34,6 +34,7 @@ mod live_screen;
 mod radar_screen;
 mod rain_screen;
 mod rain_sync;
+mod report_screen;
 mod settings_screen;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -98,6 +99,7 @@ enum Tab {
     History,
     Settings,
     Rain,
+    Report,
 }
 
 struct App {
@@ -145,6 +147,11 @@ struct App {
     rain_gate: RefreshGate,
     /// Thông báo xuất CSV mưa Vrain.
     rain_notice: Option<String>,
+    report_from: String,
+    report_to: String,
+    /// (khoá khoảng ngày, giây lúc dựng, các dòng theo tháng).
+    report_preview: Option<(String, i64, Vec<app::report::ReportRow>)>,
+    report_notice: Option<String>,
     /// Hộp thoại thông báo (lỗi bảng dung tích, cấu hình hỏng…).
     modal: Option<String>,
     history: Option<History>,
@@ -219,6 +226,7 @@ impl App {
             Some("settings") => Tab::Settings,
             Some("manual") => Tab::Manual,
             Some("rain") => Tab::Rain,
+            Some("report") => Tab::Report,
             _ => Tab::Calc,
         };
         let live_target = Arc::new(Mutex::new(Target { url: config.logger.url.clone(), poll: Duration::from_secs(config.logger.poll().into()) }));
@@ -268,6 +276,10 @@ impl App {
             rain_error: None,
             rain_gate: RefreshGate::new(),
             rain_notice: None,
+            report_from: Self::default_report_range().0,
+            report_to: Self::default_report_range().1,
+            report_preview: None,
+            report_notice: None,
             modal,
             history,
             history_rows: Vec::new(),
@@ -432,7 +444,7 @@ impl App {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        let (rain_refresh, calc, clear, t1, t2, t3, t4, t5, refresh) = ctx.input_mut(|i| {
+        let (rain_refresh, calc, clear, t1, t2, t3, t4, t5, t6, refresh) = ctx.input_mut(|i| {
             (
                 // Phải đọc trước Cmd+R: Cmd+Shift+R là "Cập nhật ngay" của mưa Vrain.
                 i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::R),
@@ -443,6 +455,7 @@ impl App {
                 i.consume_key(Modifiers::COMMAND, Key::Num3),
                 i.consume_key(Modifiers::COMMAND, Key::Num4),
                 i.consume_key(Modifiers::COMMAND, Key::Num5),
+                i.consume_key(Modifiers::COMMAND, Key::Num6),
                 i.consume_key(Modifiers::COMMAND, Key::R),
             )
         });
@@ -468,6 +481,8 @@ impl App {
             self.tab = Tab::Settings;
         } else if t5 {
             self.tab = Tab::Rain;
+        } else if t6 {
+            self.tab = Tab::Report;
         }
     }
 }
@@ -604,7 +619,7 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::Manual, "Tính bằng tay", "2"), (Tab::History, "Lịch sử", "3"), (Tab::Settings, "Cài đặt", "4"), (Tab::Rain, "Mưa", "5")] {
+                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::Manual, "Tính bằng tay", "2"), (Tab::History, "Lịch sử", "3"), (Tab::Settings, "Cài đặt", "4"), (Tab::Rain, "Mưa", "5"), (Tab::Report, "Báo cáo", "6")] {
                         let active = self.tab == tab;
                         let text = if active {
                             RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
@@ -636,6 +651,7 @@ impl eframe::App for App {
                 Tab::History => self.history_screen(ui, p),
                 Tab::Settings => self.settings_screen(ui, p),
                 Tab::Rain => self.rain_screen(ui, p),
+                Tab::Report => self.report_screen(ui, p),
             });
         });
 
