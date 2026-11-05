@@ -74,5 +74,5 @@ Mạng/401/5xx → dùng dữ liệu đã lưu kèm nhãn; sai tài khoản → 
 - Mưa Vrain **không** đi vào công thức lưu lượng về.
 
 ## 8. Còn mở (chỉ chủ dự án trả lời được)
-1. Tài khoản dùng chung `thuathienhue` có được phép dùng cho app chạy tự động của nhà máy không, hay xin tài khoản/khóa riêng? Điều khoản Vrain về lấy dữ liệu tự động chưa kiểm.
+1. ~~Tài khoản dùng chung có được dùng cho app tự động không?~~ **Đã chốt (2026-11-05): chủ dự án xác nhận được dùng chung tài khoản.** Điều khoản Vrain về lấy dữ liệu tự động vẫn chưa đọc; giữ chu kỳ 60 phút và nút Cập nhật ngay cách nhau ≥ 30 giây để nhẹ tải.
 2. Có dùng thêm các trạm khác ở A Lưới (Hồng Vân, Nhâm, Hồng Thái, Hồ A Lá…) sau này không — nếu có, danh sách trạm nên là cấu hình ngay từ đầu (thiết kế đã để sẵn).

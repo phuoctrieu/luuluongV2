@@ -119,7 +119,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế
 - [ ] J5 Logic thuần app: tổng hợp, mức mưa, `RefreshGate` (11 test)
 - [ ] J6 Nối luồng nền + Cài đặt Vrain + Keychain
 - [ ] J7 Giao diện: thẻ tóm tắt, tab Mưa (tab 5), nút Cập nhật ngay; chụp ảnh sáng/tối
-- [ ] J8 Nghiệm thu, thử thật, tài liệu. Còn mở: được phép dùng tài khoản dùng chung `thuathienhue` cho app tự động không (điều khoản Vrain)
+- [ ] J8 Nghiệm thu, thử thật, tài liệu. Đã chốt 2026-11-05: chủ dự án được dùng chung tài khoản; chưa đọc điều khoản Vrain về lấy tự động
 
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
