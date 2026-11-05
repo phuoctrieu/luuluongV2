@@ -22,7 +22,7 @@
 - `crates/weather/` — thư viện `luuluong-weather`: `aggregate.rs` (gộp ngày), `cache.rs`, `free.rs` (OpenWeather miễn phí), `provider.rs` (trait + kiểu dữ liệu), `error.rs`
 - `crates/app/src/schedule.rs` — lịch làm mới thời tiết; `src/view.rs` — định dạng hiển thị thời tiết
 - `crates/weather/src/openmeteo.rs` (Open-Meteo nhiều mô hình), `multi.rs` (lấy nhiều nguồn cùng lúc), `source.rs` (nguồn lưu trong config)
-- `crates/storage/` — `luuluong-storage`: `config.rs` (có `[vrain]`), `history.rs` (SQLite: bảng `calc` + `rain_obs`, `RainObs`), `csv_export.rs` (có `rain_to_csv`), `secret.rs` (Keychain), `table_loader.rs` (CSV/XLSX); `tests/data/tinhtoan.xlsx` là bảng của bản cũ để đối chiếu
+- `crates/storage/` — `luuluong-storage`: `config.rs` (có `[vrain]`), `history.rs` (SQLite: bảng `calc` + `rain_obs`, `RainObs`), `csv_export.rs` (có `rain_to_csv`), `secret.rs` (Keychain), `table_loader.rs` (CSV/XLSX), `xlsx_report.rs` (ghi báo cáo .xlsx nhiều sheet: `Sheet`, `Cell`, `write_workbook`); `tests/data/tinhtoan.xlsx` là bảng của bản cũ để đối chiếu
 - `crates/app/src/settings.rs` — kiểm tra biểu mẫu Cài đặt; `history_screen.rs`, `settings_screen.rs` — hai màn hình mới
 - `crates/weather/src/radar.rs` — radar mưa: khung RainViewer, tile OSM (cache đĩa), toán tile, giải mã PNG
 - `crates/app/src/paint.rs` — biểu tượng + hiệu ứng thời tiết vẽ bằng code; `chart.rs` — biểu đồ cột so sánh nguồn; `radar_screen.rs` — thẻ radar mưa

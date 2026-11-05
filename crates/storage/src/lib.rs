@@ -5,3 +5,4 @@ pub mod csv_export;
 pub mod history;
 pub mod secret;
 pub mod table_loader;
+pub mod xlsx_report;

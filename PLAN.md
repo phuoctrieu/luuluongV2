@@ -126,7 +126,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 - [x] K1 `averages::flow_between` (lưu lượng về trong khoảng bất kỳ) — 4 test
 - [x] K2 `rain::rain_between`, `rain::heavy_alert` — 9 test
 - [x] K3 `report.rs`: kỳ ngày/tháng/năm, dòng báo cáo, tổng, `parse_range` — 11 test
-- [ ] K4 `storage::xlsx_report` ghi .xlsx (+ dependency) — 5 test
+- [x] K4 `storage::xlsx_report` ghi .xlsx (+ dependency `rust_xlsxwriter` 0.96) — 6 test
 - [ ] K5 Tab Báo cáo (phím 6), xuất Excel 3 sheet — 5 test + kiểm tay
 - [ ] K6 Chip cảnh báo mưa Vrain trên thanh đầu — kiểm tay
 - [ ] K7 Nghiệm thu, tài liệu, đo kích thước file
@@ -138,6 +138,7 @@ Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn h
 - GUI: egui/eframe; HTTP: ureq; Lịch sử: rusqlite bundled; API key: keyring.
 - Gói OpenWeather miễn phí là mặc định (chờ xác nhận mục 10.4).
 - Palette giữ navy + cam theo đặc tả 6.3.
+- Ngoại lệ đặc tả 7.1: thêm `rust_xlsxwriter` (storage) để xuất báo cáo Excel — chủ dự án đồng ý 2026-11-05. Không thêm gì khác.
 
 - Crate đặt tên `luuluong-core` vì tên `core` trùng thư viện chuẩn Rust (làm hỏng macro thiserror); thư mục vẫn là `crates/core`.
 - Bảng dung tích mặc định để ở `crates/core/assets/` (không phải `app/assets/`) để `core` nhúng và test được.
