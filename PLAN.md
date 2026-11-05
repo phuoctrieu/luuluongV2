@@ -114,7 +114,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế
 - [x] J0 Thăm dò: nhiều ngày dùng được (lấy bù 2 ngày), `x-org-uuid` bắt buộc, `timePoint` = cuối giờ — ghi trong contexte/vrain-api.md
 - [x] J1 Crate `luuluong-vrain`: `parse_details` (7 test)
 - [x] J2 Client đăng nhập cookie `sid`, đăng nhập lại 1 lần (8 test)
-- [ ] J3 Luồng nền có trigger (4 test)
+- [x] J3 Luồng nền có trigger (5 test)
 - [ ] J4 Lưu trữ `rain_obs`, CSV, `[vrain]` trong config (7 test)
 - [ ] J5 Logic thuần app: tổng hợp, mức mưa, `RefreshGate` (11 test)
 - [ ] J6 Nối luồng nền + Cài đặt Vrain + Keychain
