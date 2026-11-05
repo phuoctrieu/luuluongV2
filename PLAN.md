@@ -138,7 +138,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 ### Giai đoạn 12 — Cập nhật ứng dụng từ GitHub (OTA) (yêu cầu 2026-11-05)
 Thiết kế: `docs/superpowers/specs/2026-11-05-cap-nhat-tu-dong-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-05-cap-nhat-tu-dong.md`. Đã chốt: báo có bản mới và chỉ cài khi bấm; SHA-256 do GitHub cung cấp; thêm `zip` và `sha2` (ngoại lệ 7.1); tự kiểm tra mỗi lần mở (≤ 1 lần/ngày) + nút thủ công. Bản đầu có tính năng này phải cài tay.
 - [x] M1 `crates/update`: phiên bản, đọc release — 14 test
-- [ ] M2 gọi API và tải có kiểm SHA-256 — 8 test
+- [x] M2 gọi API và tải có kiểm SHA-256 — 10 test
 - [ ] M3 giải nén zip an toàn — 6 test
 - [ ] M4 thay thế bằng đổi tên có quay lui, dọn — 10 test
 - [ ] M5 cấu hình `[update]`, lịch kiểm tra — 6 test
