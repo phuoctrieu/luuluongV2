@@ -144,7 +144,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-cap-nhat-tu-dong-design.md`; k�
 - [x] M5 cấu hình `[update]`, lịch kiểm tra — 6 test (2 test mặc định/khứ hồi là chốt chặn, pass ngay từ đầu)
 - [x] M6 tích hợp app: `install_release` (5 test đầu cuối), máy trạng thái (9 test), thẻ Cập nhật trong Cài đặt, hộp xác nhận, chip "Có bản mới" (nền cam, cặp màu nút TÍNH), tự kiểm tra khi mở app, dọn `.old` khi khởi động — CHƯA kiểm tay (người dùng: thẻ hiện, "Kiểm tra cập nhật", chip)
 - [x] M7 `package_macos.sh` tạo thêm `.app.zip` (ditto --norsrc --noextattr --noqtn), `release.yml` đính kèm `.app.zip`, `livrables/QUY-TRINH-PHAT-HANH.md`; đã kiểm với gói `.app` giả: chữ ký ký tạm còn hợp lệ sau khi giải nén bằng thư viện zip của app. CHƯA chạy script đầy đủ và CHƯA chạy workflow (cần build 2 kiến trúc / gắn thẻ — việc của chủ dự án)
-- [ ] M8 nghiệm thu + kiểm toàn trình (cần phát hành thử, do người dùng)
+- [x] M8 nghiệm thu tự động: 383 test pass (315 → 383 sau OTA), clippy sạch, tài liệu `contexte/cap-nhat.md`, `livrables/QUY-TRINH-PHAT-HANH.md`. CÒN LẠI cần người dùng: kiểm tay thẻ Cập nhật/chip; phát hành thử (0.2.x → 0.3.0) và cập nhật thật trên macOS + Windows (xem quy trình); chạy đầy đủ `package_macos.sh` để chắc `.app.zip` hợp lệ trên bản universal
 
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
