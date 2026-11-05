@@ -34,6 +34,7 @@ mod live_screen;
 mod radar_screen;
 mod rain_screen;
 mod rain_sync;
+mod update_screen;
 mod report_screen;
 mod settings_screen;
 
@@ -81,6 +82,11 @@ fn apply_theme(ctx: &egui::Context, theme: &str) {
 }
 
 /// Mở thư mục bằng trình quản lý file của hệ điều hành.
+/// Mở trang web bằng trình duyệt mặc định (cùng cách mở thư mục: `open`, `explorer`, `xdg-open` nhận được URL).
+fn open_url(url: &str) {
+    open_folder(std::path::Path::new(url));
+}
+
 fn open_folder(path: &std::path::Path) {
     let program = if cfg!(target_os = "macos") {
         "open"
@@ -166,6 +172,12 @@ struct App {
     report_notice: Option<String>,
     /// Thư mục của lần xuất báo cáo gần nhất (nhớ trong phiên chạy).
     report_last_dir: Option<PathBuf>,
+    update_state: app::update_state::UpdateState,
+    update_tx: Sender<app::update_state::UpdateEvent>,
+    update_rx: Receiver<app::update_state::UpdateEvent>,
+    update_confirm: bool,
+    /// Bản cài đặt sẽ được mở lại sau khi cập nhật xong.
+    update_target: Option<luuluong_update::Target>,
     /// Hộp thoại thông báo (lỗi bảng dung tích, cấu hình hỏng…).
     modal: Option<String>,
     history: Option<History>,
@@ -191,6 +203,7 @@ impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::install(&cc.egui_ctx);
         let (tx, rx) = channel();
+        let (update_tx, update_rx) = channel();
         let dirs = project_dirs();
         let cache_path = dirs.as_ref().map(|d| d.cache_dir().join("weather_cache.json"));
         let config_path = dirs.as_ref().map(|d| d.config_dir().join("config.toml"));
@@ -295,6 +308,11 @@ impl App {
             report_preview: None,
             report_notice: None,
             report_last_dir: None,
+            update_state: app::update_state::UpdateState::Idle,
+            update_tx,
+            update_rx,
+            update_confirm: false,
+            update_target: None,
             modal,
             history,
             history_rows: Vec::new(),
@@ -312,6 +330,10 @@ impl App {
         };
         app.load_rain(unix_now());
         app.sync_vrain(&cc.egui_ctx);
+        app.cleanup_after_update();
+        if app::update_state::check_due(app.config.update.auto_check, app.config.update.last_check, unix_now()) {
+            app.start_update_check(&cc.egui_ctx);
+        }
         app
     }
 
@@ -542,13 +564,22 @@ fn card(p: &Palette) -> Frame {
 
 /// Chip đỏ cảnh báo trên thanh đầu; `true` khi vừa được bấm.
 fn alert_chip(ui: &mut egui::Ui, p: &Palette, text: &str, id: &str, tooltip: &str) -> bool {
+    chip(ui, p, (p.error, p.on_error, paint::Icon::Warn), text, id, tooltip)
+}
+
+/// Chip thông tin màu nhấn (nền cam, cặp màu của nút TÍNH) cho "Có bản mới".
+fn info_chip(ui: &mut egui::Ui, p: &Palette, text: &str, id: &str, tooltip: &str) -> bool {
+    chip(ui, p, (p.accent, p.on_accent, paint::Icon::Info), text, id, tooltip)
+}
+
+fn chip(ui: &mut egui::Ui, p: &Palette, (fill, ink, icon): (Color32, Color32, paint::Icon), text: &str, id: &str, tooltip: &str) -> bool {
     let chip = Frame::new()
-        .fill(p.error)
+        .fill(fill)
         .stroke(Stroke::new(1.0_f32, p.header_text))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(Margin::symmetric(10, 3))
         .show(ui, |ui| {
-            paint::note(ui, paint::Icon::Warn, p.on_error, 13.0, RichText::new(text).font(FontId::new(13.0, theme::semibold())));
+            paint::note(ui, icon, ink, 13.0, RichText::new(text).font(FontId::new(13.0, theme::semibold())));
         });
     ui.interact(chip.response.rect, Id::new(id), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tooltip).clicked()
 }
@@ -582,6 +613,7 @@ impl eframe::App for App {
         self.poll_weather(ctx);
         self.poll_live();
         self.poll_vrain();
+        self.poll_update(ctx);
         self.radar_tick(ctx);
 
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
@@ -598,6 +630,7 @@ impl eframe::App for App {
         let vrain_alert = self.vrain_alert();
         let mut goto_calc = false;
         let mut goto_rain = false;
+        let mut goto_settings = false;
         egui::TopBottomPanel::top("nav")
             .frame(Frame::new().fill(p.header_bg).inner_margin(Margin::symmetric(16, 8)))
             .show(ctx, |ui| {
@@ -617,6 +650,10 @@ impl eframe::App for App {
                             ui.add_space(12.0);
                             goto_rain |= alert_chip(ui, p, text, "vrain_alert_chip", "Xem chi tiết ở tab Mưa");
                         }
+                        if let Some(r) = app::update_state::available(&self.update_state) {
+                            ui.add_space(12.0);
+                            goto_settings |= info_chip(ui, p, &format!("Có bản mới {}", r.version), "update_chip", "Xem và cập nhật ở tab Cài đặt");
+                        }
                     });
                 });
             });
@@ -625,6 +662,8 @@ impl eframe::App for App {
             self.tab = Tab::Calc;
         } else if goto_rain {
             self.tab = Tab::Rain;
+        } else if goto_settings {
+            self.tab = Tab::Settings;
         }
         egui::TopBottomPanel::top("tabs")
             .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0_f32, p.border)).inner_margin(Margin::symmetric(16, 0)))
@@ -667,6 +706,8 @@ impl eframe::App for App {
                 Tab::Report => self.report_screen(ui, p),
             });
         });
+
+        self.update_confirm_window(ctx, p);
 
         if let Some(message) = self.modal.clone() {
             egui::Window::new("Thông báo")

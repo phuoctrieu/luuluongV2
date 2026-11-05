@@ -292,6 +292,9 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
         });
         ui.add_space(12.0);
 
+        self.update_card(ui, p);
+        ui.add_space(12.0);
+
         card(p).show(ui, |ui| {
             ui.set_width(ui.available_width());
             title(ui, p, "Giao diện");
