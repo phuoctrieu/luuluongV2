@@ -133,7 +133,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 
 ### Giai đoạn 11 — Sắp xếp tab, chọn nơi lưu báo cáo (yêu cầu 2026-11-05)
 - [x] L1 Thứ tự tab (hằng `TABS` trong `main.rs`): Tính toán (1) · Tính bằng tay (2) · Mưa (3) · Báo cáo (4) · Lịch sử (5) · Cài đặt (6, cuối cùng); phím Cmd/Ctrl + số theo đúng thứ tự hiển thị (trước đây 3 = Lịch sử, 4 = Cài đặt, 5 = Mưa, 6 = Báo cáo) — 2 test
-- [ ] L2 Xuất báo cáo cho chọn nơi lưu (đang chờ quyết định cách làm: hộp thoại hệ điều hành cần thêm thư viện)
+- [x] L2 Xuất báo cáo mở hộp thoại "Lưu thành…" của hệ điều hành (thư viện `rfd` 0.17.2, ngoại lệ 7.1 thứ hai, chủ dự án đồng ý 2026-11-05): gợi ý tên `bao-cao-luu-luong-ve-<từ>-<đến>.xlsx`, tự thêm đuôi `.xlsx` nếu thiếu (`report::with_xlsx_extension`, 1 test), nhớ thư mục lần chọn trước trong phiên; hủy hộp thoại thì không ghi gì; "Mở thư mục" mở thư mục vừa chọn. File chạy release arm64 7,10 MB. CHƯA thử bằng mắt (hộp thoại hệ điều hành)
 
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
@@ -142,7 +142,7 @@ Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn h
 - GUI: egui/eframe; HTTP: ureq; Lịch sử: rusqlite bundled; API key: keyring.
 - Gói OpenWeather miễn phí là mặc định (chờ xác nhận mục 10.4).
 - Palette giữ navy + cam theo đặc tả 6.3.
-- Ngoại lệ đặc tả 7.1: thêm `rust_xlsxwriter` (storage) để xuất báo cáo Excel — chủ dự án đồng ý 2026-11-05. Không thêm gì khác.
+- Ngoại lệ đặc tả 7.1: thêm `rust_xlsxwriter` (storage) để xuất báo cáo Excel, và `rfd` (app) để hộp thoại chọn nơi lưu — chủ dự án đồng ý 2026-11-05. Không thêm gì khác.
 
 - Crate đặt tên `luuluong-core` vì tên `core` trùng thư viện chuẩn Rust (làm hỏng macro thiserror); thư mục vẫn là `crates/core`.
 - Bảng dung tích mặc định để ở `crates/core/assets/` (không phải `app/assets/`) để `core` nhúng và test được.

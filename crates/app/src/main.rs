@@ -164,6 +164,8 @@ struct App {
     /// (khoá khoảng ngày, giây lúc dựng, các dòng theo tháng).
     report_preview: Option<(String, i64, Vec<app::report::ReportRow>)>,
     report_notice: Option<String>,
+    /// Thư mục của lần xuất báo cáo gần nhất (nhớ trong phiên chạy).
+    report_last_dir: Option<PathBuf>,
     /// Hộp thoại thông báo (lỗi bảng dung tích, cấu hình hỏng…).
     modal: Option<String>,
     history: Option<History>,
@@ -292,6 +294,7 @@ impl App {
             report_to: Self::default_report_range().1,
             report_preview: None,
             report_notice: None,
+            report_last_dir: None,
             modal,
             history,
             history_rows: Vec::new(),

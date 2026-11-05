@@ -45,20 +45,36 @@ impl App {
         });
     }
 
+    /// Hỏi nơi lưu bằng hộp thoại của hệ điều hành rồi ghi file; nhớ thư mục vừa chọn cho lần sau.
     fn export_report(&mut self, from: NaiveDate, to: NaiveDate) {
-        let (Some(dir), Some((records, obs))) = (self.data_dir.as_ref().map(|d| d.join("exports")), self.report_source(from)) else {
+        let Some((records, obs)) = self.report_source(from) else {
             self.report_notice = Some("Chưa có dữ liệu lịch sử để lập báo cáo.".into());
             return;
         };
+        let start_dir = self.report_last_dir.clone().or_else(|| self.data_dir.as_ref().map(|d| d.join("exports")));
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Lưu báo cáo Excel")
+            .set_file_name(report::file_name(from, to))
+            .add_filter("Excel (.xlsx)", &["xlsx"]);
+        if let Some(dir) = &start_dir {
+            let _ = std::fs::create_dir_all(dir);
+            dialog = dialog.set_directory(dir);
+        }
+        let Some(chosen) = dialog.save_file() else {
+            self.report_notice = Some("Đã hủy, chưa xuất file.".into());
+            return;
+        };
+        let path = report::with_xlsx_extension(&chosen);
         let now = unix_now();
         let ids = REPORT_STATIONS.map(|s| s.0);
         let by = |g| (g, report::build(&records, &obs, ids, from, to, g, now));
         let sheets = report::to_sheets([by(Granularity::Day), by(Granularity::Month), by(Granularity::Year)], REPORT_STATIONS.map(|s| s.1), from, to);
-        let path = dir.join(report::file_name(from, to));
-        let result = std::fs::create_dir_all(&dir).map_err(|_| ()).and_then(|_| write_workbook(&path, &sheets).map_err(|_| ()));
-        self.report_notice = Some(match result {
-            Ok(()) => format!("Đã xuất báo cáo: {}", path.display()),
-            Err(()) => "Không xuất được file Excel. Kiểm tra ổ đĩa còn chỗ trống.".into(),
+        self.report_notice = Some(match write_workbook(&path, &sheets) {
+            Ok(()) => {
+                self.report_last_dir = path.parent().map(std::path::Path::to_path_buf);
+                format!("Đã xuất báo cáo: {}", path.display())
+            }
+            Err(e) => e.to_string(),
         });
     }
 
@@ -131,8 +147,10 @@ impl App {
                         if ui.add(accent_button(p, "Xuất Excel")).clicked() {
                             self.export_report(from, to);
                         }
-                        if let Some(dir) = self.data_dir.as_ref().map(|d| d.join("exports")) {
+                        let folder = self.report_last_dir.clone().or_else(|| self.data_dir.as_ref().map(|d| d.join("exports")));
+                        if let Some(dir) = folder {
                             if ui.button("Mở thư mục").clicked() {
+                                let _ = std::fs::create_dir_all(&dir);
                                 open_folder(&dir);
                             }
                         }

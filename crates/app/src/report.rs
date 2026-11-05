@@ -236,6 +236,16 @@ pub fn to_sheets(rows_by_g: [(Granularity, Vec<ReportRow>); 3], names: [&str; 2]
         .collect()
 }
 
+/// Đường dẫn người dùng chọn trong hộp thoại lưu; thiếu đuôi `.xlsx` thì thêm vào (không thay đuôi khác).
+pub fn with_xlsx_extension(path: &std::path::Path) -> std::path::PathBuf {
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("xlsx")) {
+        return path.to_path_buf();
+    }
+    let mut name = path.as_os_str().to_owned();
+    name.push(".xlsx");
+    name.into()
+}
+
 pub fn file_name(from: NaiveDate, to: NaiveDate) -> String {
     format!("bao-cao-luu-luong-ve-{}-{}.xlsx", from.format("%d%m%Y"), to.format("%d%m%Y"))
 }
@@ -474,6 +484,15 @@ mod tests {
         assert_eq!(f[3], Cell::Num((10.0 + 30.0) * 86_400.0)); // cộng
         assert_eq!(f[4], Cell::Num(100.0));
         assert_eq!(f[5..7], [Cell::Num(4.0), Cell::Num(2.0)]);
+    }
+
+    #[test]
+    fn xlsx_extension_is_added_only_when_missing() {
+        use std::path::Path;
+        assert_eq!(with_xlsx_extension(Path::new("/tmp/bao-cao")), Path::new("/tmp/bao-cao.xlsx"));
+        assert_eq!(with_xlsx_extension(Path::new("/tmp/bao-cao.xlsx")), Path::new("/tmp/bao-cao.xlsx"));
+        assert_eq!(with_xlsx_extension(Path::new("/tmp/BAO-CAO.XLSX")), Path::new("/tmp/BAO-CAO.XLSX"));
+        assert_eq!(with_xlsx_extension(Path::new("/tmp/bao-cao.csv")), Path::new("/tmp/bao-cao.csv.xlsx"));
     }
 
     #[test]
