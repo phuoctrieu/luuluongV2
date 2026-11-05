@@ -34,4 +34,5 @@
 - `crates/app/src/averages.rs` — lưu lượng về trung bình và mưa cộng dồn 3 giờ … 1 năm, thống kê theo ngày, từ lịch sử (thuần, có test); `chart.rs` có thêm `daily_chart`
 - `crates/app/src/live.rs` — trạng thái mực nước + lưu lượng về theo chu kỳ (thuần); `live_screen.rs` — tab Hiện tại, nút lấy mực nước ở tab Tính bằng tay
 - `crates/app/build.rs` — gắn biểu tượng/thông tin vào `.exe` khi build cho Windows (`winresource`); `crates/app/assets/icon.{png,ico,icns}` — biểu tượng ứng dụng, sinh bằng `scripts/make_icon.py`
-
+- `crates/vrain/` — `luuluong-vrain`: mưa theo giờ 3 trạm Vrain; `parse.rs` (`parse_details`, `vn_date`, mốc `timePoint` → epoch), `error.rs`; `tests/data/vrain_details.json` là mẫu phản hồi rút gọn. API đã xác minh: `contexte/vrain-api.md`
+- `docs/superpowers/specs/` + `plans/` — thiết kế và kế hoạch Vrain; `scripts/probe_vrain_login.py` — script thăm dò (bỏ ở J8)

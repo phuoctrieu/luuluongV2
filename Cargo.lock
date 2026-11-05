@@ -1563,6 +1563,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "luuluong-vrain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "mockito",
+ "serde_json",
+ "thiserror 1.0.69",
+ "ureq",
+]
+
+[[package]]
 name = "luuluong-weather"
 version = "0.1.0"
 dependencies = [

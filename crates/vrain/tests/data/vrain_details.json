@@ -1,0 +1,17 @@
+{"detailUUID":"x","groupID":null,"stats":[
+ {"timePoint":"Tổng","stations":[
+  {"area":"A Lưới 5","depth":"0.2","id":"841697470576","name":"Hương Nguyên (A Lưới)","sid":"s1"},
+  {"area":"A Lưới 4","depth":"0.6","id":"84396786852","name":"A Đớt (A Lưới)","sid":"s2"},
+  {"area":"A Lưới 5","depth":"1.0","id":"84846302387","name":"Tà Lương (A Lưới)","sid":"s3"},
+  {"area":"Vinh Lộc","depth":"9.9","id":"84845529137","name":"Giang Hải (Phú Lộc)","sid":"s4"}]},
+ {"timePoint":"09:00 05/11","stations":[
+  {"area":"A Lưới 5","depth":"0.0","id":"841697470576","name":"Hương Nguyên (A Lưới)","sid":"s1"},
+  {"area":"A Lưới 4","depth":"0.2","id":"84396786852","name":"A Đớt (A Lưới)","sid":"s2"},
+  {"area":"A Lưới 5","depth":"0.4","id":"84846302387","name":"Tà Lương (A Lưới)","sid":"s3"},
+  {"area":"Vinh Lộc","depth":"5.0","id":"84845529137","name":"Giang Hải (Phú Lộc)","sid":"s4"}]},
+ {"timePoint":"10:00 05/11","stations":[
+  {"area":"A Lưới 5","depth":"0.2","id":"841697470576","name":"Hương Nguyên (A Lưới)","sid":"s1"},
+  {"area":"A Lưới 4","depth":"0.4","id":"84396786852","name":"A Đớt (A Lưới)","sid":"s2"},
+  {"area":"A Lưới 5","depth":"0.6","id":"84846302387","name":"Tà Lương (A Lưới)","sid":"s3"},
+  {"area":"Vinh Lộc","depth":"4.9","id":"84845529137","name":"Giang Hải (Phú Lộc)","sid":"s4"}]}
+]}

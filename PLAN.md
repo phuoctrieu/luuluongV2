@@ -112,7 +112,7 @@ Công thức mục 3 giữ nguyên: `V_tuabin = (H1·Q1 + H2·Q2)·3600` với H
 ### Giai đoạn 9 — Mưa quan trắc Vrain (3 trạm A Lưới) (yêu cầu 2026-11-05)
 Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế hoạch chi tiết (bước, test, chữ ký hàm): `docs/superpowers/plans/2026-11-05-vrain-rainfall.md`; API đã xác minh: `contexte/vrain-api.md`. Gồm nút "Cập nhật ngay" (cách nhau ≥ 30 giây).
 - [x] J0 Thăm dò: nhiều ngày dùng được (lấy bù 2 ngày), `x-org-uuid` bắt buộc, `timePoint` = cuối giờ — ghi trong contexte/vrain-api.md
-- [ ] J1 Crate `luuluong-vrain`: `parse_details` (6 test)
+- [x] J1 Crate `luuluong-vrain`: `parse_details` (7 test)
 - [ ] J2 Client đăng nhập cookie `sid`, đăng nhập lại 1 lần (7 test)
 - [ ] J3 Luồng nền có trigger (4 test)
 - [ ] J4 Lưu trữ `rain_obs`, CSV, `[vrain]` trong config (7 test)
