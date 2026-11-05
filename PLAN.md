@@ -118,7 +118,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế
 - [x] J4 Lưu trữ `rain_obs`, CSV, `[vrain]` trong config (7 test)
 - [x] J5 Logic thuần app: tổng hợp, mức mưa, `RefreshGate` (12 test)
 - [x] J6 Nối luồng nền + Cài đặt Vrain + Keychain (4 test cài đặt; chưa thử với tài khoản thật — chạy `set -a; source .env; set +a; cargo run -p app`)
-- [ ] J7 Giao diện: thẻ tóm tắt, tab Mưa (tab 5), nút Cập nhật ngay; chụp ảnh sáng/tối
+- [x] J7 Giao diện: thẻ tóm tắt, tab Mưa (tab 5), nút Cập nhật ngay (Cmd/Ctrl+Shift+R) — code + test xong; CHƯA nhìn bằng mắt (cần người dùng chạy app với dữ liệu giả, xem kế hoạch Task 7 Step 2)
 - [ ] J8 Nghiệm thu, thử thật, tài liệu. Đã chốt 2026-11-05: chủ dự án được dùng chung tài khoản; chưa đọc điều khoản Vrain về lấy tự động
 
 ## Đang làm
