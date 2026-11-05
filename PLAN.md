@@ -131,6 +131,10 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 - [x] K6 Chip cảnh báo mưa Vrain trên thanh đầu (logic có test ở K2; bấm chip → tab Mưa) — CHƯA kiểm tay
 - [x] K7 Nghiệm thu: 315 test pass (280 → 315), clippy sạch, tài liệu xong, file chạy release arm64 7,08 MB (≤ 15 MB). CÒN cần người dùng kiểm tay: tab Báo cáo (xuất + mở Excel/Numbers, so với Lịch sử) và chip (J7/K5/K6)
 
+### Giai đoạn 11 — Sắp xếp tab, chọn nơi lưu báo cáo (yêu cầu 2026-11-05)
+- [x] L1 Thứ tự tab (hằng `TABS` trong `main.rs`): Tính toán (1) · Tính bằng tay (2) · Mưa (3) · Báo cáo (4) · Lịch sử (5) · Cài đặt (6, cuối cùng); phím Cmd/Ctrl + số theo đúng thứ tự hiển thị (trước đây 3 = Lịch sử, 4 = Cài đặt, 5 = Mưa, 6 = Báo cáo) — 2 test
+- [ ] L2 Xuất báo cáo cho chọn nơi lưu (đang chờ quyết định cách làm: hộp thoại hệ điều hành cần thêm thư viện)
+
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
 

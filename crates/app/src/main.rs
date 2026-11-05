@@ -92,7 +92,7 @@ fn open_folder(path: &std::path::Path) {
     let _ = std::process::Command::new(program).arg(path).spawn();
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Tab {
     Calc,
     Manual,
@@ -101,6 +101,18 @@ enum Tab {
     Rain,
     Report,
 }
+
+/// Thứ tự hiển thị của các tab; phím Cmd/Ctrl + 1…6 theo đúng thứ tự này.
+const TABS: [(Tab, &str); 6] = [
+    (Tab::Calc, "Tính toán"),
+    (Tab::Manual, "Tính bằng tay"),
+    (Tab::Rain, "Mưa"),
+    (Tab::Report, "Báo cáo"),
+    (Tab::History, "Lịch sử"),
+    (Tab::Settings, "Cài đặt"),
+];
+
+const TAB_KEYS: [Key; 6] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6];
 
 struct App {
     table: VolumeTable,
@@ -444,18 +456,13 @@ impl App {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        let (rain_refresh, calc, clear, t1, t2, t3, t4, t5, t6, refresh) = ctx.input_mut(|i| {
+        let (rain_refresh, calc, clear, tab_key, refresh) = ctx.input_mut(|i| {
             (
                 // Phải đọc trước Cmd+R: Cmd+Shift+R là "Cập nhật ngay" của mưa Vrain.
                 i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::R),
                 i.consume_key(Modifiers::COMMAND, Key::Enter),
                 i.consume_key(Modifiers::COMMAND, Key::Backspace),
-                i.consume_key(Modifiers::COMMAND, Key::Num1),
-                i.consume_key(Modifiers::COMMAND, Key::Num2),
-                i.consume_key(Modifiers::COMMAND, Key::Num3),
-                i.consume_key(Modifiers::COMMAND, Key::Num4),
-                i.consume_key(Modifiers::COMMAND, Key::Num5),
-                i.consume_key(Modifiers::COMMAND, Key::Num6),
+                TAB_KEYS.iter().position(|k| i.consume_key(Modifiers::COMMAND, *k)),
                 i.consume_key(Modifiers::COMMAND, Key::R),
             )
         });
@@ -471,18 +478,8 @@ impl App {
         if clear && self.tab == Tab::Manual {
             self.clear();
         }
-        if t1 {
-            self.tab = Tab::Calc;
-        } else if t2 {
-            self.tab = Tab::Manual;
-        } else if t3 {
-            self.tab = Tab::History;
-        } else if t4 {
-            self.tab = Tab::Settings;
-        } else if t5 {
-            self.tab = Tab::Rain;
-        } else if t6 {
-            self.tab = Tab::Report;
+        if let Some(n) = tab_key {
+            self.tab = TABS[n].0;
         }
     }
 }
@@ -631,7 +628,8 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::Manual, "Tính bằng tay", "2"), (Tab::History, "Lịch sử", "3"), (Tab::Settings, "Cài đặt", "4"), (Tab::Rain, "Mưa", "5"), (Tab::Report, "Báo cáo", "6")] {
+                    for (n, (tab, name)) in TABS.into_iter().enumerate() {
+                        let key = (n + 1).to_string();
                         let active = self.tab == tab;
                         let text = if active {
                             RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
@@ -1337,4 +1335,24 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native("luuluong", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tabs_are_listed_once_each_with_settings_last() {
+        assert_eq!(TABS.last().map(|t| t.0), Some(Tab::Settings));
+        for (i, (tab, _)) in TABS.iter().enumerate() {
+            assert!(TABS.iter().skip(i + 1).all(|(other, _)| other != tab), "tab lặp");
+        }
+        assert_eq!(TABS.len(), TAB_KEYS.len(), "mỗi tab một phím");
+    }
+
+    #[test]
+    fn tabs_follow_the_working_order() {
+        let names: Vec<&str> = TABS.iter().map(|t| t.1).collect();
+        assert_eq!(names, ["Tính toán", "Tính bằng tay", "Mưa", "Báo cáo", "Lịch sử", "Cài đặt"]);
+    }
 }
