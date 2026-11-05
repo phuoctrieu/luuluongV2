@@ -39,3 +39,4 @@
 - `crates/app/src/rain.rs` — mưa Vrain thuần logic: `rain_sum` (neo mốc mới nhất), `level`, `is_stale`, `hourly_series`, `compare_note`, `RefreshGate` (nút Cập nhật ngay, cách ≥ 30 giây)
 - `crates/app/src/rain_sync.rs` — nối luồng nền Vrain vào `App`: `sync_vrain`, `poll_vrain`, `request_rain_refresh`, `load_rain`; mật khẩu Vrain trong Keychain (service `luuluong`, user `vrain-password`)
 - `crates/app/src/rain_screen.rs` — thẻ "Mưa quan trắc thượng nguồn" (tab Tính toán), tab "Mưa" (bảng 3 trạm × khoảng + hàng ECAPRO, biểu đồ 7 ngày, xuất CSV), nút Cập nhật ngay 4 trạng thái
+- `crates/app/src/report.rs` — báo cáo theo ngày/tháng/năm thuần logic: `periods`, `build`, `totals`, `parse_range`; `averages::flow_between`, `rain::{rain_between, heavy_alert}` là phần nền

@@ -125,7 +125,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế
 Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-05-bao-cao-va-chip-mua.md`. Ngoại lệ 7.1: thêm `rust_xlsxwriter` (chủ dự án đồng ý 2026-11-05). Báo cáo chỉ 2 trạm Hương Nguyên và A Đớt.
 - [x] K1 `averages::flow_between` (lưu lượng về trong khoảng bất kỳ) — 4 test
 - [x] K2 `rain::rain_between`, `rain::heavy_alert` — 9 test
-- [ ] K3 `report.rs`: kỳ ngày/tháng/năm, dòng báo cáo, tổng, `parse_range` — 11 test
+- [x] K3 `report.rs`: kỳ ngày/tháng/năm, dòng báo cáo, tổng, `parse_range` — 11 test
 - [ ] K4 `storage::xlsx_report` ghi .xlsx (+ dependency) — 5 test
 - [ ] K5 Tab Báo cáo (phím 6), xuất Excel 3 sheet — 5 test + kiểm tay
 - [ ] K6 Chip cảnh báo mưa Vrain trên thanh đầu — kiểm tay

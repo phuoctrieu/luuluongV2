@@ -8,3 +8,4 @@ pub mod paint;
 pub mod live;
 pub mod averages;
 pub mod rain;
+pub mod report;
