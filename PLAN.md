@@ -137,7 +137,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 
 ### Giai đoạn 12 — Cập nhật ứng dụng từ GitHub (OTA) (yêu cầu 2026-11-05)
 Thiết kế: `docs/superpowers/specs/2026-11-05-cap-nhat-tu-dong-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-05-cap-nhat-tu-dong.md`. Đã chốt: báo có bản mới và chỉ cài khi bấm; SHA-256 do GitHub cung cấp; thêm `zip` và `sha2` (ngoại lệ 7.1); tự kiểm tra mỗi lần mở (≤ 1 lần/ngày) + nút thủ công. Bản đầu có tính năng này phải cài tay.
-- [ ] M1 `crates/update`: phiên bản, đọc release — 13 test
+- [x] M1 `crates/update`: phiên bản, đọc release — 14 test
 - [ ] M2 gọi API và tải có kiểm SHA-256 — 8 test
 - [ ] M3 giải nén zip an toàn — 6 test
 - [ ] M4 thay thế bằng đổi tên có quay lui, dọn — 10 test
@@ -153,7 +153,7 @@ Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn h
 - GUI: egui/eframe; HTTP: ureq; Lịch sử: rusqlite bundled; API key: keyring.
 - Gói OpenWeather miễn phí là mặc định (chờ xác nhận mục 10.4).
 - Palette giữ navy + cam theo đặc tả 6.3.
-- Ngoại lệ đặc tả 7.1: thêm `rust_xlsxwriter` (storage) để xuất báo cáo Excel, và `rfd` (app) để hộp thoại chọn nơi lưu — chủ dự án đồng ý 2026-11-05. Không thêm gì khác.
+- Ngoại lệ đặc tả 7.1: thêm `rust_xlsxwriter` (storage) để xuất báo cáo Excel, `rfd` (app) để hộp thoại chọn nơi lưu, và `sha2` + `zip` (crate `update`) để cập nhật từ GitHub — chủ dự án đồng ý 2026-11-05. Không thêm gì khác.
 
 - Crate đặt tên `luuluong-core` vì tên `core` trùng thư viện chuẩn Rust (làm hỏng macro thiserror); thư mục vẫn là `crates/core`.
 - Bảng dung tích mặc định để ở `crates/core/assets/` (không phải `app/assets/`) để `core` nhúng và test được.

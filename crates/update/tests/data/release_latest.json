@@ -1,0 +1,29 @@
+{
+ "tag_name": "v0.2.0",
+ "draft": false,
+ "prerelease": false,
+ "body": "Bản 0.2.0 (mẫu thử): thẻ mưa Vrain, tab Báo cáo.\n\n- Mưa 3 trạm A Lưới\n- Xuất Excel",
+ "assets": [
+  {
+   "name": "luuluong-0.2.0-macos-universal.dmg",
+   "size": 8527054,
+   "digest": "sha256:1ec600a0648fa33d2368fac02e3ece72b4bd54433a1d31c4fdbfd92fbbe0f434",
+   "browser_download_url": "https://github.com/phuoctrieu/luuluongV2/releases/download/v0.2.0/luuluong-0.2.0-macos-universal.dmg",
+   "content_type": "application/x-apple-diskimage"
+  },
+  {
+   "name": "luuluong-0.2.0-windows-x64.zip",
+   "size": 4028944,
+   "digest": "sha256:cf3474fbd304c870da01b269fe8307485fdd8f31cfbdccb57909c0055d9c9abb",
+   "browser_download_url": "https://github.com/phuoctrieu/luuluongV2/releases/download/v0.2.0/luuluong-0.2.0-windows-x64.zip",
+   "content_type": "application/zip"
+  },
+  {
+   "name": "luuluong-0.2.0-macos-universal.app.zip",
+   "size": 8000000,
+   "digest": "sha256:abababababababababababababababababababababababababababababababab",
+   "browser_download_url": "https://github.com/phuoctrieu/luuluongV2/releases/download/v0.2.0/luuluong-0.2.0-macos-universal.app.zip",
+   "content_type": "application/zip"
+  }
+ ]
+}
