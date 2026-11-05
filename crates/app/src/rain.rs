@@ -112,6 +112,57 @@ pub fn daily_rain(obs: &[RainObs], station_id: &str, now: i64, days: usize) -> V
         .collect()
 }
 
+/// Mưa của một trạm trong khoảng `(from, to]` (epoch giây), cho báo cáo.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RainSpan {
+    /// Tổng các mốc giờ đã có; `None` nếu không có mốc nào.
+    pub mm: Option<f64>,
+    /// Số mốc giờ đã có (mốc trùng đếm một lần).
+    pub hours: u32,
+    /// Số mốc giờ lẽ ra có = `(to − from) / 3600`, làm tròn xuống.
+    pub expected: u32,
+}
+
+pub fn rain_between(obs: &[RainObs], station_id: &str, from: i64, to: i64) -> RainSpan {
+    let mut marks: Vec<(i64, f64)> =
+        obs.iter().filter(|o| o.station_id == station_id && o.ts > from && o.ts <= to).map(|o| (o.ts, o.mm)).collect();
+    marks.sort_by_key(|m| m.0);
+    marks.dedup_by_key(|m| m.0);
+    RainSpan {
+        mm: (!marks.is_empty()).then(|| marks.iter().map(|m| m.1).sum()),
+        hours: marks.len() as u32,
+        expected: ((to - from) / 3600).max(0) as u32,
+    }
+}
+
+/// Cảnh báo mưa lớn Vrain cho thanh đầu.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeavyAlert {
+    pub text: String,
+    pub station_id: String,
+}
+
+/// `stations` = (id, tên). Chỉ xét trạm có mốc mới nhất cách `now` không quá 3 giờ. Ưu tiên mưa 24 giờ ≥ `warn_mm`
+/// (trạm cao nhất), nếu không thì mưa 1 giờ > 7,6 mm (trạm cao nhất).
+pub fn heavy_alert(obs: &[RainObs], stations: &[(String, String)], now: i64, warn_mm: f64) -> Option<HeavyAlert> {
+    const FRESH_SECS: i64 = 3 * 3600;
+    const HEAVY_MM_PER_HOUR: f64 = 7.6;
+    let vn = |x: f64| format!("{x:.1}").replace('.', ",");
+    let fresh: Vec<&(String, String)> =
+        stations.iter().filter(|(id, _)| latest_ts(obs, id).is_some_and(|t| now - t <= FRESH_SECS)).collect();
+    let highest = |hours: u32, keep: &dyn Fn(f64) -> bool| {
+        fresh
+            .iter()
+            .filter_map(|(id, name)| rain_sum(obs, id, hours).filter(|mm| keep(*mm)).map(|mm| (mm, id, name)))
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+    };
+    if let Some((mm, id, name)) = highest(24, &|mm| mm >= warn_mm) {
+        return Some(HeavyAlert { text: format!("Mưa lớn {name}: {} mm / 24 giờ (Vrain)", vn(mm)), station_id: id.clone() });
+    }
+    highest(1, &|mm| mm > HEAVY_MM_PER_HOUR)
+        .map(|(mm, id, name)| HeavyAlert { text: format!("Mưa to {name}: {} mm / giờ (Vrain)", vn(mm)), station_id: id.clone() })
+}
+
 /// Cách nhau tối thiểu giữa hai lần bấm "Cập nhật ngay".
 pub const MANUAL_MIN_GAP_SECS: i64 = 30;
 
@@ -239,6 +290,82 @@ mod tests {
         let d = daily_rain(&o, "a", vn_epoch(2026, 11, 5, 10), 1);
         assert_eq!(d[0].hours, 1);
     }
+
+    fn marks(id: &str, hours: std::ops::RangeInclusive<i64>, mm: impl Fn(i64) -> f64) -> Vec<RainObs> {
+        hours.map(|h| ro(id, h, mm(h))).collect()
+    }
+
+    fn stations() -> Vec<(String, String)> {
+        [("hn", "Hương Nguyên"), ("ad", "A Đớt"), ("tl", "Tà Lương")].iter().map(|(i, n)| (i.to_string(), n.to_string())).collect()
+    }
+
+    #[test]
+    fn rain_between_sums_marks_in_half_open_range() {
+        let o: Vec<RainObs> = (1..=5).map(|h| ro("a", h, 1.0)).collect();
+        let r = rain_between(&o, "a", BASE + H, BASE + 4 * H); // (1h, 4h] → mốc 2, 3, 4
+        assert_eq!((r.mm, r.hours, r.expected), (Some(3.0), 3, 3));
+    }
+
+    #[test]
+    fn rain_between_counts_hours_and_expected() {
+        let o: Vec<RainObs> = (1..=10).map(|h| ro("a", h, 0.5)).collect();
+        let r = rain_between(&o, "a", BASE, BASE + 24 * H);
+        assert_eq!((r.mm, r.hours, r.expected), (Some(5.0), 10, 24));
+    }
+
+    #[test]
+    fn rain_between_none_without_marks_and_ignores_other_stations_and_duplicates() {
+        let r = rain_between(&[ro("b", 1, 9.0)], "a", BASE, BASE + 2 * H);
+        assert_eq!((r.mm, r.hours, r.expected), (None, 0, 2));
+        let dup = rain_between(&[ro("a", 1, 1.0), ro("a", 1, 1.0)], "a", BASE, BASE + 2 * H);
+        assert_eq!((dup.mm, dup.hours), (Some(1.0), 1));
+    }
+
+    #[test]
+    fn heavy_alert_by_24h_picks_highest_station() {
+        let mut o = marks("hn", 7..=30, |_| 0.5);
+        o.extend(marks("ad", 7..=30, |h| if h == 30 { 3.6 } else { 2.6 })); // 63,4 mm
+        o.extend(marks("tl", 7..=30, |h| if h == 30 { 9.0 } else { 2.0 })); // 55 mm
+        let a = heavy_alert(&o, &stations(), BASE + 30 * H + 600, 50.0).unwrap();
+        assert_eq!(a.text, "Mưa lớn A Đớt: 63,4 mm / 24 giờ (Vrain)");
+        assert_eq!(a.station_id, "ad");
+    }
+
+    #[test]
+    fn heavy_alert_by_hour_when_24h_below_threshold() {
+        let o = marks("hn", 7..=30, |h| if h == 30 { 9.2 } else { 0.4 });
+        let a = heavy_alert(&o, &stations(), BASE + 30 * H, 50.0).unwrap();
+        assert_eq!(a.text, "Mưa to Hương Nguyên: 9,2 mm / giờ (Vrain)");
+    }
+
+    #[test]
+    fn heavy_alert_prefers_24h_over_hour() {
+        let mut o = marks("hn", 7..=30, |h| if h == 30 { 9.2 } else { 0.0 });
+        o.extend(marks("ad", 7..=30, |_| 2.5)); // 60 mm
+        let a = heavy_alert(&o, &stations(), BASE + 30 * H, 50.0).unwrap();
+        assert!(a.text.starts_with("Mưa lớn A Đớt"), "{}", a.text);
+    }
+
+    #[test]
+    fn heavy_alert_exactly_at_threshold_fires_and_below_does_not() {
+        let o = marks("hn", 7..=30, |_| 2.0); // đúng 48 mm
+        assert!(heavy_alert(&o, &stations(), BASE + 30 * H, 48.0).is_some());
+        assert!(heavy_alert(&o, &stations(), BASE + 30 * H, 48.1).is_none());
+    }
+
+    #[test]
+    fn heavy_alert_ignores_stale_stations() {
+        let o = marks("hn", 7..=30, |_| 5.0);
+        assert!(heavy_alert(&o, &stations(), BASE + 33 * H, 50.0).is_some(), "đúng 3 giờ vẫn xét");
+        assert!(heavy_alert(&o, &stations(), BASE + 33 * H + 1, 50.0).is_none(), "quá 3 giờ là mưa cũ");
+    }
+
+    #[test]
+    fn heavy_alert_none_without_data_or_stations() {
+        assert!(heavy_alert(&[], &stations(), BASE, 50.0).is_none());
+        assert!(heavy_alert(&marks("hn", 7..=30, |_| 9.0), &[], BASE + 30 * H, 50.0).is_none());
+    }
+
 
     #[test]
     fn level_thresholds() {
