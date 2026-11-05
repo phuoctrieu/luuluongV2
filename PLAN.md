@@ -135,6 +135,17 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 - [x] L1 Thứ tự tab (hằng `TABS` trong `main.rs`): Tính toán (1) · Tính bằng tay (2) · Mưa (3) · Báo cáo (4) · Lịch sử (5) · Cài đặt (6, cuối cùng); phím Cmd/Ctrl + số theo đúng thứ tự hiển thị (trước đây 3 = Lịch sử, 4 = Cài đặt, 5 = Mưa, 6 = Báo cáo) — 2 test
 - [x] L2 Xuất báo cáo mở hộp thoại "Lưu thành…" của hệ điều hành (thư viện `rfd` 0.17.2, ngoại lệ 7.1 thứ hai, chủ dự án đồng ý 2026-11-05): gợi ý tên `bao-cao-luu-luong-ve-<từ>-<đến>.xlsx`, tự thêm đuôi `.xlsx` nếu thiếu (`report::with_xlsx_extension`, 1 test), nhớ thư mục lần chọn trước trong phiên; hủy hộp thoại thì không ghi gì; "Mở thư mục" mở thư mục vừa chọn. File chạy release arm64 7,10 MB. CHƯA thử bằng mắt (hộp thoại hệ điều hành)
 
+### Giai đoạn 12 — Cập nhật ứng dụng từ GitHub (OTA) (yêu cầu 2026-11-05)
+Thiết kế: `docs/superpowers/specs/2026-11-05-cap-nhat-tu-dong-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-05-cap-nhat-tu-dong.md`. Đã chốt: báo có bản mới và chỉ cài khi bấm; SHA-256 do GitHub cung cấp; thêm `zip` và `sha2` (ngoại lệ 7.1); tự kiểm tra mỗi lần mở (≤ 1 lần/ngày) + nút thủ công. Bản đầu có tính năng này phải cài tay.
+- [ ] M1 `crates/update`: phiên bản, đọc release — 13 test
+- [ ] M2 gọi API và tải có kiểm SHA-256 — 8 test
+- [ ] M3 giải nén zip an toàn — 6 test
+- [ ] M4 thay thế bằng đổi tên có quay lui, dọn — 10 test
+- [ ] M5 cấu hình `[update]`, lịch kiểm tra — 6 test
+- [ ] M6 tích hợp app: trạng thái, thẻ Cập nhật, chip — 7 test + kiểm tay
+- [ ] M7 đóng gói `.app.zip`, CI, quy trình phát hành
+- [ ] M8 nghiệm thu + kiểm toàn trình (cần phát hành thử, do người dùng)
+
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
 
