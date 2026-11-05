@@ -16,6 +16,8 @@ pub enum SettingsField {
     RainAlert,
     LoggerUrl,
     LoggerPoll,
+    VrainUsername,
+    VrainRefresh,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -34,6 +36,9 @@ pub struct SettingsForm {
     pub rain_alert_mm: String,
     pub logger_url: String,
     pub logger_poll: String,
+    pub vrain_enabled: bool,
+    pub vrain_username: String,
+    pub vrain_refresh: String,
     /// Nguồn chính (thẻ ngày).
     pub source: Source,
     /// Các nguồn bật để so sánh; nguồn chính luôn được tính vào.
@@ -56,6 +61,9 @@ impl SettingsForm {
             rain_alert_mm: vn(c.weather.rain_alert_mm),
             logger_url: c.logger.url.clone(),
             logger_poll: c.logger.poll_seconds.to_string(),
+            vrain_enabled: c.vrain.enabled,
+            vrain_username: c.vrain.username.clone(),
+            vrain_refresh: c.vrain.refresh_minutes.to_string(),
             source,
             compare: c.weather.sources.iter().filter_map(|id| Source::from_id(id)).collect(),
             theme: c.ui.theme.clone(),
@@ -96,6 +104,12 @@ impl SettingsForm {
         let poll = number(SettingsField::LoggerPoll, &self.logger_poll, &|x| {
             (x.fract() != 0.0 || !(1.0..=60.0).contains(&x)).then_some("Nhập số giây nguyên từ 1 đến 60")
         });
+        let vrain_refresh = number(SettingsField::VrainRefresh, &self.vrain_refresh, &|x| {
+            (x.fract() != 0.0 || !(5.0..=1440.0).contains(&x)).then_some("Nhập số phút nguyên từ 5 đến 1440")
+        });
+        if self.vrain_enabled && self.vrain_username.trim().is_empty() {
+            errors.push(SettingsError { field: SettingsField::VrainUsername, message: "Vui lòng nhập tài khoản Vrain.".into() });
+        }
         let url = self.logger_url.trim();
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             errors.push(SettingsError { field: SettingsField::LoggerUrl, message: "Địa chỉ phải bắt đầu bằng http:// hoặc https://".into() });
@@ -112,6 +126,9 @@ impl SettingsForm {
         c.weather.rain_alert_mm = rain;
         c.logger.url = url.to_string();
         c.logger.poll_seconds = poll as u32;
+        c.vrain.enabled = self.vrain_enabled;
+        c.vrain.username = self.vrain_username.trim().to_string();
+        c.vrain.refresh_minutes = vrain_refresh as u32;
         c.weather.source = self.source.id();
         // Thứ tự cố định theo `Source::ALL`; nguồn chính luôn có mặt.
         c.weather.sources = Source::ALL.iter().filter(|s| **s == self.source || self.compare.contains(s)).map(|s| s.id()).collect();
@@ -250,6 +267,57 @@ mod tests {
             f.logger_poll = bad.into();
             assert_eq!(errors(&f).iter().map(|e| e.0).collect::<Vec<_>>(), [SettingsField::LoggerPoll], "{bad:?}");
         }
+    }
+
+    #[test]
+    fn vrain_requires_username_when_enabled() {
+        let mut f = form();
+        f.vrain_username = "   ".into();
+        assert!(f.to_config(&Config::default()).is_ok(), "tắt Vrain thì không đòi tài khoản");
+        f.vrain_enabled = true;
+        assert!(errors(&f).contains(&(SettingsField::VrainUsername, "Vui lòng nhập tài khoản Vrain.".to_string())));
+        f.vrain_username = " user1 ".into();
+        assert_eq!(f.to_config(&Config::default()).unwrap().vrain.username, "user1");
+    }
+
+    #[test]
+    fn vrain_refresh_minutes_range_5_to_1440() {
+        for bad in ["4", "1441", "5,5", "abc", ""] {
+            let mut f = form();
+            f.vrain_refresh = bad.into();
+            assert!(errors(&f).iter().any(|e| e.0 == SettingsField::VrainRefresh), "{bad:?} phải bị từ chối");
+        }
+        for good in ["5", "60", "1440"] {
+            let mut f = form();
+            f.vrain_refresh = good.into();
+            assert_eq!(f.to_config(&Config::default()).unwrap().vrain.refresh_minutes, good.parse::<u32>().unwrap());
+        }
+    }
+
+    #[test]
+    fn vrain_settings_roundtrip_and_keep_stations() {
+        let mut f = form();
+        f.vrain_enabled = true;
+        f.vrain_username = "user1".into();
+        f.vrain_refresh = "30".into();
+        let c = f.to_config(&Config::default()).unwrap();
+        assert!(c.vrain.enabled);
+        assert_eq!((c.vrain.username.as_str(), c.vrain.refresh_minutes), ("user1", 30));
+        assert_eq!(c.vrain.stations, Config::default().vrain.stations);
+        assert_eq!(SettingsForm::from_config(&c), f);
+    }
+
+    #[test]
+    fn config_file_never_contains_a_password() {
+        let mut c = Config::default();
+        c.vrain.enabled = true;
+        c.vrain.username = "user1".into();
+        let path = std::env::temp_dir().join(format!("luuluong-vrain-cfg-{}.toml", std::process::id()));
+        c.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap().to_lowercase();
+        let _ = std::fs::remove_file(&path);
+        assert!(text.contains("user1"));
+        assert!(!text.contains("password") && !text.contains("mat_khau"), "config không được có mật khẩu");
     }
 
     #[test]

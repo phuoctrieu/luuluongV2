@@ -22,6 +22,8 @@ use luuluong_storage::history::{vn_timestamp, History, Record};
 use luuluong_storage::secret::{KeyringStore, SecretStore};
 use luuluong_storage::table_loader::load_volume_table;
 use luuluong_logger::poller::{self, Sample, Target};
+use luuluong_storage::history::RainObs;
+use app::rain::RefreshGate;
 use luuluong_weather::multi::{fetch_all, SourceResult};
 use luuluong_weather::free::FreeProvider;
 use luuluong_weather::openmeteo::{Model, OpenMeteoProvider};
@@ -30,6 +32,7 @@ use luuluong_weather::{cache, Snapshot, Source, WeatherError};
 mod history_screen;
 mod live_screen;
 mod radar_screen;
+mod rain_sync;
 mod settings_screen;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -127,6 +130,17 @@ struct App {
     config_path: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     secrets: Option<KeyringStore>,
+    vrain_secrets: Option<KeyringStore>,
+    /// Mật khẩu Vrain đã đọc từ Keychain (hoặc `VRAIN_PASS` khi dev); không bao giờ vào config/log.
+    vrain_password: String,
+    vrain_password_input: String,
+    vrain_target: Option<Arc<Mutex<luuluong_vrain::Target>>>,
+    vrain_trigger: Option<Sender<()>>,
+    vrain_rx: Option<Receiver<luuluong_vrain::PollResult>>,
+    rain_obs: Vec<RainObs>,
+    rain_last_ok: Option<i64>,
+    rain_error: Option<String>,
+    rain_gate: RefreshGate,
     /// Hộp thoại thông báo (lỗi bảng dung tích, cấu hình hỏng…).
     modal: Option<String>,
     history: Option<History>,
@@ -178,6 +192,8 @@ impl App {
             History::open(&d.join("history.db")).map_err(|e| storage_warning = Some(e.to_string())).ok()
         });
         let (lat, lon) = (config.weather.lat, config.weather.lon);
+        let vrain_secrets = KeyringStore::new("luuluong", "vrain-password").ok();
+        let vrain_password = vrain_secrets.as_ref().and_then(|s| s.get()).or_else(|| std::env::var("VRAIN_PASS").ok()).unwrap_or_default();
         let secrets = KeyringStore::new("luuluong", "openweather-api-key").ok();
         // Key trong Keychain/Credential Manager; biến môi trường chỉ để dev/test.
         let api_key = secrets
@@ -204,7 +220,7 @@ impl App {
         let (live_tx, live_rx) = channel();
         let wake_ctx = cc.egui_ctx.clone();
         poller::spawn(live_target.clone(), live_tx, move || wake_ctx.request_repaint());
-        Self {
+        let mut app = Self {
             table,
             turbine: Turbine { q_h1: config.turbine.q_h1, q_h2: config.turbine.q_h2 },
             form: Form::default(),
@@ -236,6 +252,16 @@ impl App {
             config_path,
             data_dir,
             secrets,
+            vrain_secrets,
+            vrain_password,
+            vrain_password_input: String::new(),
+            vrain_target: None,
+            vrain_trigger: None,
+            vrain_rx: None,
+            rain_obs: Vec::new(),
+            rain_last_ok: None,
+            rain_error: None,
+            rain_gate: RefreshGate::new(),
             modal,
             history,
             history_rows: Vec::new(),
@@ -250,7 +276,10 @@ impl App {
             key_input: String::new(),
             table_notice: None,
             dev_scroll: std::env::args().find_map(|a| a.strip_prefix("--scroll=").and_then(|v| v.parse().ok())),
-        }
+        };
+        app.load_rain(unix_now());
+        app.sync_vrain(&cc.egui_ctx);
+        app
     }
 
     fn source(&self) -> Source {
@@ -510,6 +539,7 @@ impl eframe::App for App {
         let p = theme::palette(ctx);
         self.poll_weather(ctx);
         self.poll_live();
+        self.poll_vrain();
         self.radar_tick(ctx);
 
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {

@@ -1,6 +1,8 @@
 //! Màn hình Cài đặt (F8, F9): tổ máy, nguồn thời tiết, API key, giao diện, bảng dung tích, thư mục dữ liệu.
 
+use app::live::VN_TZ;
 use app::settings::{SettingsError, SettingsField};
+use app::view;
 use eframe::egui::{self, FontId, Margin, RichText};
 use luuluong_storage::secret::SecretStore;
 use luuluong_storage::table_loader::load_volume_table;
@@ -67,6 +69,11 @@ impl App {
                 self.config = config;
                 self.sync_sources();
                 self.sync_live();
+                self.sync_vrain(ctx);
+                if self.vrain_target.is_some() {
+                    // Tài khoản hoặc chu kỳ vừa đổi: lấy ngay để thấy kết quả.
+                    self.request_rain_refresh();
+                }
                 if source_changed || minutes != self.scheduler_minutes() {
                     self.scheduler = super::Scheduler::new(minutes);
                 }
@@ -220,6 +227,67 @@ Open-Meteo miễn phí cho mục đích phi thương mại; OpenWeather cần AP
                     self.api_key.clear();
                     self.settings_notice = Some("Đã xóa API key.".into());
                 }
+            });
+        });
+        ui.add_space(12.0);
+
+        card(p).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            title(ui, p, "Mưa quan trắc Vrain (A Lưới)");
+            ui.add_space(8.0);
+            ui.checkbox(&mut self.settings.vrain_enabled, "Lấy mưa 3 trạm Hương Nguyên, A Đớt, Tà Lương từ vrain.vn");
+            form_grid("vrain_grid").show(ui, |ui| {
+                form_row(ui, "Tài khoản", |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.settings.vrain_username).desired_width(220.0).margin(Margin::symmetric(8, 8)));
+                    if let Some(e) = error_for(&errors, SettingsField::VrainUsername) {
+                        app::paint::note(ui, app::paint::Icon::Warn, p.error, 12.0, RichText::new(e.to_string()));
+                    }
+                });
+                ui.end_row();
+                text_row(ui, p, "Lấy mưa sau mỗi", "phút", &mut self.settings.vrain_refresh, error_for(&errors, SettingsField::VrainRefresh));
+                ui.end_row();
+            });
+            let has_password = !self.vrain_password.is_empty();
+            ui.label(RichText::new(if has_password { "Đã có mật khẩu." } else { "Chưa có mật khẩu." }).size(12.0).color(p.muted));
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut self.vrain_password_input).password(true).desired_width(280.0).margin(Margin::symmetric(8, 8)));
+                let can_save = !self.vrain_password_input.is_empty() && self.vrain_secrets.is_some();
+                if ui.add_enabled(can_save, egui::Button::new("Lưu mật khẩu")).clicked() {
+                    let password = self.vrain_password_input.clone();
+                    let saved = self.vrain_secrets.as_ref().map(|s| s.set(&password));
+                    self.settings_notice = Some(match saved {
+                        Some(Ok(())) => {
+                            self.vrain_password = password;
+                            self.vrain_password_input.clear();
+                            self.sync_vrain(ui.ctx());
+                            self.request_rain_refresh();
+                            "Đã lưu mật khẩu Vrain.".into()
+                        }
+                        Some(Err(e)) => e.to_string(),
+                        None => "Không truy cập được kho khóa của hệ điều hành.".into(),
+                    });
+                }
+                if ui.add_enabled(has_password, egui::Button::new("Xóa mật khẩu")).clicked() {
+                    if let Some(s) = &self.vrain_secrets {
+                        let _ = s.delete();
+                    }
+                    self.vrain_password.clear();
+                    self.sync_vrain(ui.ctx());
+                    self.settings_notice = Some("Đã xóa mật khẩu Vrain.".into());
+                }
+            });
+            ui.horizontal(|ui| {
+                if ui.add_enabled(self.rain_configured(), egui::Button::new("Thử đăng nhập")).on_hover_text("Lưu cài đặt trước, rồi thử lấy mưa ngay").clicked() {
+                    self.request_rain_refresh();
+                }
+                let status = match (&self.rain_error, self.rain_last_ok) {
+                    (Some(e), _) => e.clone(),
+                    (None, Some(t)) => format!("Lấy mưa lần cuối lúc {}", view::clock(t, VN_TZ)),
+                    (None, None) if self.rain_configured() => "Chưa lấy lần nào.".into(),
+                    _ => "Chưa bật hoặc thiếu tài khoản/mật khẩu.".into(),
+                };
+                let color = if self.rain_error.is_some() { p.error } else { p.muted };
+                ui.label(RichText::new(status).size(12.0).color(color));
             });
         });
         ui.add_space(12.0);

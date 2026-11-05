@@ -37,3 +37,4 @@
 - `crates/vrain/` — `luuluong-vrain`: mưa theo giờ 3 trạm Vrain; `parse.rs` (`parse_details`, `vn_date`, mốc `timePoint` → epoch), `client.rs` (`Client`, `Credentials`: đăng nhập cookie `sid`, lấy theo giờ, đăng nhập lại 1 lần, thử lại 3 lần), `poller.rs` (`spawn`, `Target`: luồng nền + tín hiệu Cập nhật ngay, lấy bù 2 ngày lần đầu), `error.rs`; `tests/data/vrain_details.json` là mẫu phản hồi rút gọn. API đã xác minh: `contexte/vrain-api.md`
 - `docs/superpowers/specs/` + `plans/` — thiết kế và kế hoạch Vrain; `scripts/probe_vrain_login.py` — script thăm dò (bỏ ở J8)
 - `crates/app/src/rain.rs` — mưa Vrain thuần logic: `rain_sum` (neo mốc mới nhất), `level`, `is_stale`, `hourly_series`, `compare_note`, `RefreshGate` (nút Cập nhật ngay, cách ≥ 30 giây)
+- `crates/app/src/rain_sync.rs` — nối luồng nền Vrain vào `App`: `sync_vrain`, `poll_vrain`, `request_rain_refresh`, `load_rain`; mật khẩu Vrain trong Keychain (service `luuluong`, user `vrain-password`)
