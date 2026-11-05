@@ -129,7 +129,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 - [x] K4 `storage::xlsx_report` ghi .xlsx (+ dependency `rust_xlsxwriter` 0.96) — 6 test
 - [x] K5 Tab Báo cáo (phím 6), xuất Excel 3 sheet — 5 test (to_sheets, file_name); CHƯA kiểm tay (người dùng mở tab Báo cáo, xuất, mở bằng Excel/Numbers, so một ngày với Lịch sử)
 - [x] K6 Chip cảnh báo mưa Vrain trên thanh đầu (logic có test ở K2; bấm chip → tab Mưa) — CHƯA kiểm tay
-- [ ] K7 Nghiệm thu, tài liệu, đo kích thước file
+- [x] K7 Nghiệm thu: 315 test pass (280 → 315), clippy sạch, tài liệu xong, file chạy release arm64 7,08 MB (≤ 15 MB). CÒN cần người dùng kiểm tay: tab Báo cáo (xuất + mở Excel/Numbers, so với Lịch sử) và chip (J7/K5/K6)
 
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.

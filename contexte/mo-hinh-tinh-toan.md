@@ -29,3 +29,11 @@ Mưa theo giờ của 3 trạm Vrain ở A Lưới (Hương Nguyên, A Đớt, T
 - Mức mưa theo mm/giờ: 0 không mưa; ≤ 2,5 nhỏ; ≤ 7,6 vừa; lớn hơn là to (ngưỡng tự đặt, không phải của Vrain).
 - So sánh với trạm nhà máy: mưa trung bình 24 giờ của 3 trạm Vrain so với "1 ngày" của ECAPRO (chỉ khi app đã chạy ≥ 90 % ngày); chênh ≥ nửa ngưỡng cảnh báo mưa ngày thì nhắc kiểm tra cảm biến.
 - Chi tiết API và điều đã xác minh: `contexte/vrain-api.md`.
+
+## Báo cáo ngày/tháng/năm (2026-11-05)
+Tab Báo cáo xuất Excel 3 sheet (Ngày, Tháng, Năm) cho khoảng ngày chọn; hàm thuần ở `crates/app/src/report.rs`.
+- **Kỳ:** ngày, tháng, năm theo lịch giờ Việt Nam, kỳ đầu/cuối bị cắt theo khoảng chọn và theo hiện tại (không có kỳ trong tương lai). Cột "Khoảng tính" ghi đúng phần được tính.
+- **Lưu lượng về:** `averages::flow_between` — bình quân theo thời gian của các chu kỳ tự động đã lưu trong kỳ; Tổng lượng về = Q trung bình × thời gian có số liệu (m³). Kỳ không có chu kỳ nào để **ô trống**, không ghi 0. Dòng cuối: Tổng lượng về = cộng, Q trung bình = Σ lượng ÷ Σ thời gian có số liệu.
+- **Mưa:** `rain::rain_between` — tổng các mốc giờ Vrain trong `(đầu kỳ, cuối kỳ]` của Hương Nguyên và A Đớt; trung bình hai trạm chỉ khi cả hai có số liệu; "Có số liệu mưa" là trung bình tỷ lệ giờ có mốc của hai trạm.
+- **Hạn chế:** chỉ có số liệu từ lúc app chạy; tháng/năm cũ trống. Mưa Vrain thiếu ở những ngày app tắt lâu hơn 2 ngày (lấy bù tối đa 2 ngày).
+- **Chip cảnh báo trên thanh đầu:** mưa 24 giờ ≥ ngưỡng ngày (cùng ngưỡng thời tiết) hoặc mưa 1 giờ > 7,6 mm, chỉ khi mốc mới nhất của trạm cách hiện tại ≤ 3 giờ (`rain::heavy_alert`).
