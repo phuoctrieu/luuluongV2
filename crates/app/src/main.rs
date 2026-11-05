@@ -32,6 +32,7 @@ use luuluong_weather::{cache, Snapshot, Source, WeatherError};
 mod history_screen;
 mod live_screen;
 mod radar_screen;
+mod rain_screen;
 mod rain_sync;
 mod settings_screen;
 
@@ -96,6 +97,7 @@ enum Tab {
     Manual,
     History,
     Settings,
+    Rain,
 }
 
 struct App {
@@ -141,6 +143,8 @@ struct App {
     rain_last_ok: Option<i64>,
     rain_error: Option<String>,
     rain_gate: RefreshGate,
+    /// Thông báo xuất CSV mưa Vrain.
+    rain_notice: Option<String>,
     /// Hộp thoại thông báo (lỗi bảng dung tích, cấu hình hỏng…).
     modal: Option<String>,
     history: Option<History>,
@@ -214,6 +218,7 @@ impl App {
             Some("history") => Tab::History,
             Some("settings") => Tab::Settings,
             Some("manual") => Tab::Manual,
+            Some("rain") => Tab::Rain,
             _ => Tab::Calc,
         };
         let live_target = Arc::new(Mutex::new(Target { url: config.logger.url.clone(), poll: Duration::from_secs(config.logger.poll().into()) }));
@@ -262,6 +267,7 @@ impl App {
             rain_last_ok: None,
             rain_error: None,
             rain_gate: RefreshGate::new(),
+            rain_notice: None,
             modal,
             history,
             history_rows: Vec::new(),
@@ -426,17 +432,23 @@ impl App {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        let (calc, clear, t1, t2, t3, t4, refresh) = ctx.input_mut(|i| {
+        let (rain_refresh, calc, clear, t1, t2, t3, t4, t5, refresh) = ctx.input_mut(|i| {
             (
+                // Phải đọc trước Cmd+R: Cmd+Shift+R là "Cập nhật ngay" của mưa Vrain.
+                i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::R),
                 i.consume_key(Modifiers::COMMAND, Key::Enter),
                 i.consume_key(Modifiers::COMMAND, Key::Backspace),
                 i.consume_key(Modifiers::COMMAND, Key::Num1),
                 i.consume_key(Modifiers::COMMAND, Key::Num2),
                 i.consume_key(Modifiers::COMMAND, Key::Num3),
                 i.consume_key(Modifiers::COMMAND, Key::Num4),
+                i.consume_key(Modifiers::COMMAND, Key::Num5),
                 i.consume_key(Modifiers::COMMAND, Key::R),
             )
         });
+        if rain_refresh {
+            self.request_rain_refresh();
+        }
         if refresh {
             self.refresh_manually(ctx);
         }
@@ -454,6 +466,8 @@ impl App {
             self.tab = Tab::History;
         } else if t4 {
             self.tab = Tab::Settings;
+        } else if t5 {
+            self.tab = Tab::Rain;
         }
     }
 }
@@ -590,7 +604,7 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::Manual, "Tính bằng tay", "2"), (Tab::History, "Lịch sử", "3"), (Tab::Settings, "Cài đặt", "4")] {
+                    for (tab, name, key) in [(Tab::Calc, "Tính toán", "1"), (Tab::Manual, "Tính bằng tay", "2"), (Tab::History, "Lịch sử", "3"), (Tab::Settings, "Cài đặt", "4"), (Tab::Rain, "Mưa", "5")] {
                         let active = self.tab == tab;
                         let text = if active {
                             RichText::new(name).font(FontId::new(14.0, theme::semibold())).color(p.primary)
@@ -621,6 +635,7 @@ impl eframe::App for App {
                 Tab::Manual => self.manual_screen(ui, p),
                 Tab::History => self.history_screen(ui, p),
                 Tab::Settings => self.settings_screen(ui, p),
+                Tab::Rain => self.rain_screen(ui, p),
             });
         });
 
@@ -673,6 +688,8 @@ impl App {
     /// Tab Tính toán: số liệu trực tuyến từ thiết bị, rồi thời tiết và radar.
     fn calc_screen(&mut self, ui: &mut egui::Ui, p: &Palette) {
         self.live_panel(ui, p);
+        ui.add_space(12.0);
+        self.rain_card(ui, p);
         ui.add_space(12.0);
         self.daily_card(ui, p);
         ui.add_space(12.0);

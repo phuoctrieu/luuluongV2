@@ -1,7 +1,10 @@
 //! Mưa quan trắc Vrain: tổng hợp, mức mưa, nhận xét so với trạm nhà máy, cổng nút "Cập nhật ngay".
 //! Thuần logic (thời gian truyền vào), không phụ thuộc giao diện.
 
+use chrono::{DateTime, Days, NaiveDate};
 use luuluong_storage::history::RainObs;
+
+use crate::live::VN_TZ;
 
 /// Mốc mới nhất (epoch giây) của một trạm.
 pub fn latest_ts(obs: &[RainObs], station_id: &str) -> Option<i64> {
@@ -80,6 +83,33 @@ pub fn compare_note(vrain_mean_mm: Option<f64>, ecapro_mm: Option<f64>, warn_mm:
         vn(e),
         vn(v)
     ))
+}
+
+/// Mưa một ngày (giờ Việt Nam) của một trạm.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DayRain {
+    pub date: NaiveDate,
+    /// Tổng các mốc giờ đã có; `None` nếu ngày chưa có mốc nào.
+    pub mm: Option<f64>,
+    /// Số mốc giờ đã có trong ngày (đủ ngày = 24).
+    pub hours: u32,
+}
+
+/// `days` ngày gần nhất tính cả hôm nay, cũ trước. Mốc "00:00" thuộc về ngày trước nó (mưa 23:00–24:00).
+pub fn daily_rain(obs: &[RainObs], station_id: &str, now: i64, days: usize) -> Vec<DayRain> {
+    let day_of = |ts: i64| DateTime::from_timestamp(ts + i64::from(VN_TZ), 0).map_or(NaiveDate::MIN, |t| t.date_naive());
+    let today = day_of(now);
+    (0..days)
+        .rev()
+        .map(|back| {
+            let date = today - Days::new(back as u64);
+            let mut hours: Vec<(i64, f64)> =
+                obs.iter().filter(|o| o.station_id == station_id && day_of(o.ts - 1) == date).map(|o| (o.ts, o.mm)).collect();
+            hours.sort_by_key(|h| h.0);
+            hours.dedup_by_key(|h| h.0);
+            DayRain { date, mm: (!hours.is_empty()).then(|| hours.iter().map(|h| h.1).sum()), hours: hours.len() as u32 }
+        })
+        .collect()
 }
 
 /// Cách nhau tối thiểu giữa hai lần bấm "Cập nhật ngay".
@@ -181,6 +211,33 @@ mod tests {
         o.push(ro("b", 30, 99.0));
         assert_eq!(rain_sum(&o, "a", 1), Some(2.0));
         assert_eq!(rain_sum(&o, "b", 1), Some(99.0));
+    }
+
+    fn vn_epoch(y: i32, mo: u32, d: u32, h: u32) -> i64 {
+        NaiveDate::from_ymd_opt(y, mo, d).unwrap().and_hms_opt(h, 0, 0).unwrap().and_utc().timestamp() - i64::from(VN_TZ)
+    }
+
+    #[test]
+    fn daily_rain_assigns_midnight_mark_to_the_previous_day() {
+        let o = vec![
+            RainObs { station_id: "a".into(), ts: vn_epoch(2026, 11, 4, 1), mm: 1.0 },
+            RainObs { station_id: "a".into(), ts: vn_epoch(2026, 11, 5, 0), mm: 3.0 }, // 23:00–24:00 ngày 04
+            RainObs { station_id: "a".into(), ts: vn_epoch(2026, 11, 5, 1), mm: 0.5 }, // ngày 05
+            RainObs { station_id: "b".into(), ts: vn_epoch(2026, 11, 4, 2), mm: 99.0 },
+        ];
+        let d = daily_rain(&o, "a", vn_epoch(2026, 11, 5, 10), 3);
+        assert_eq!(d.iter().map(|x| x.date.to_string()).collect::<Vec<_>>(), ["2026-11-03", "2026-11-04", "2026-11-05"]);
+        assert_eq!(d[0], DayRain { date: d[0].date, mm: None, hours: 0 });
+        assert_eq!((d[1].mm, d[1].hours), (Some(4.0), 2));
+        assert_eq!((d[2].mm, d[2].hours), (Some(0.5), 1));
+    }
+
+    #[test]
+    fn daily_rain_counts_a_duplicate_hour_once() {
+        let ts = vn_epoch(2026, 11, 5, 5);
+        let o = vec![RainObs { station_id: "a".into(), ts, mm: 1.0 }, RainObs { station_id: "a".into(), ts, mm: 1.0 }];
+        let d = daily_rain(&o, "a", vn_epoch(2026, 11, 5, 10), 1);
+        assert_eq!(d[0].hours, 1);
     }
 
     #[test]
