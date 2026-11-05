@@ -82,6 +82,7 @@ dependencies = [
  "luuluong-core",
  "luuluong-logger",
  "luuluong-storage",
+ "luuluong-update",
  "luuluong-vrain",
  "luuluong-weather",
  "rfd",

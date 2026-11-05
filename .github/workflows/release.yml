@@ -26,11 +26,16 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos-universal
-          path: livrables/*.dmg
+          path: |
+            livrables/*.dmg
+            livrables/*.app.zip
+      # .dmg cho lần cài đầu; .app.zip là gói để tính năng "Cập nhật" trong app tải về (tên phải đúng mẫu).
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: livrables/*.dmg
+          files: |
+            livrables/*.dmg
+            livrables/*.app.zip
 
   windows:
     runs-on: windows-latest

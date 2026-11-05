@@ -11,7 +11,7 @@ luuluong-weather = { path = "../weather" }
 luuluong-logger = { path = "../logger" }
 luuluong-vrain = { path = "../vrain" }
 luuluong-update = { path = "../update" }
-rfd = ">=0.15"
+rfd = "0.17"
 directories = "5"
 egui_plot = ">=0.32"
 chrono = { version = "0.4", default-features = false, features = ["std"] }

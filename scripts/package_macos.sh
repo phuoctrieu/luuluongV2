@@ -33,8 +33,10 @@ VERSION=$(grep -m1 '^version' crates/app/Cargo.toml | cut -d'"' -f2)
 OUT=livrables
 APP="$OUT/stage/Luu luong Song Bo.app"
 DMG="$OUT/luuluong-$VERSION-macos-universal.dmg"
+# Gói cho tính năng cập nhật trong app: nguyên cả .app đã ký tạm (thay nguyên gói thì chữ ký mới còn hợp lệ).
+APPZIP="$OUT/luuluong-$VERSION-macos-universal.app.zip"
 
-rm -rf "$OUT/stage" "$DMG"
+rm -rf "$OUT/stage" "$DMG" "$APPZIP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create -output "$APP/Contents/MacOS/luuluong" \
   target/aarch64-apple-darwin/release/app \
@@ -67,9 +69,11 @@ PLIST
 # Ký tạm (không cần tài khoản Apple Developer); chưa công chứng nên lần đầu phải mở bằng chuột phải > Open.
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
+# --norsrc/--noextattr/--noqtn: không kèm thuộc tính mở rộng dạng file "._*" (nếu có, giải nén ra sẽ phá niêm phong chữ ký .app).
+ditto -c -k --norsrc --noextattr --noqtn --keepParent "$APP" "$APPZIP"
 
 ln -s /Applications "$OUT/stage/Applications"
 hdiutil create -volname "Luu luong Song Bo" -srcfolder "$OUT/stage" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$OUT/stage"
 
-echo "Đã tạo $DMG ($(du -h "$DMG" | cut -f1))"
+echo "Đã tạo $DMG ($(du -h "$DMG" | cut -f1)) và $APPZIP ($(du -h "$APPZIP" | cut -f1))"

@@ -17,6 +17,11 @@ pub fn unpack(zip_path: &Path, dest: &Path) -> Result<(), UpdateError> {
     unpack_with_limit(zip_path, dest, MAX_UNPACKED_BYTES)
 }
 
+/// Metadata AppleDouble (`._tên`) và thư mục `__MACOSX` do `ditto` sinh ra: bỏ qua, vì nếu ghi vào gói `.app` sẽ phá niêm phong chữ ký.
+fn is_apple_metadata(rel: &Path) -> bool {
+    rel.components().any(|c| c.as_os_str() == "__MACOSX") || rel.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._"))
+}
+
 pub(crate) fn unpack_with_limit(zip_path: &Path, dest: &Path, max_bytes: u64) -> Result<(), UpdateError> {
     let file = File::open(zip_path).map_err(|_| UpdateError::Io)?;
     let mut archive = ZipArchive::new(file).map_err(|_| UpdateError::BadResponse)?;
@@ -40,6 +45,9 @@ pub(crate) fn unpack_with_limit(zip_path: &Path, dest: &Path, max_bytes: u64) ->
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|_| UpdateError::BadResponse)?;
         let Some(rel) = entry.enclosed_name() else { return Err(UpdateError::BadResponse) };
+        if is_apple_metadata(&rel) {
+            continue;
+        }
         let out = dest.join(rel);
         if entry.is_dir() {
             std::fs::create_dir_all(&out).map_err(|_| UpdateError::Io)?;
@@ -159,6 +167,54 @@ mod tests {
         make_zip(&z, &[("big.bin", &vec![7_u8; 5000], 0o644)]);
         assert_eq!(unpack_with_limit(&z, &dir.join("out"), 4999), Err(UpdateError::TooLarge));
         assert!(unpack_with_limit(&z, &dir.join("out2"), 5000).is_ok());
+    }
+
+    #[test]
+    fn unpack_skips_appledouble_metadata_so_the_bundle_seal_stays_intact() {
+        // `ditto` có thể lưu thuộc tính mở rộng thành các mục `._*` và `__MACOSX/`; ghi chúng vào gói .app sẽ phá chữ ký.
+        let dir = temp_dir("appledouble");
+        let z = dir.join("a.zip");
+        make_zip(
+            &z,
+            &[
+                ("App.app/Contents/MacOS/luuluong", b"binary", 0o755),
+                ("App.app/Contents/MacOS/._luuluong", b"meta", 0o644),
+                ("App.app/Contents/._MacOS", b"meta", 0o644),
+                ("App.app/Contents/.__CodeSignature", b"meta", 0o644),
+                ("__MACOSX/App.app/._x", b"meta", 0o644),
+            ],
+        );
+        let out = dir.join("out");
+        unpack(&z, &out).unwrap();
+        assert_eq!(std::fs::read(out.join("App.app/Contents/MacOS/luuluong")).unwrap(), b"binary");
+        let mut names: Vec<String> = Vec::new();
+        for e in walk(&out) {
+            names.push(e.strip_prefix(&out).unwrap().to_string_lossy().into_owned());
+        }
+        assert!(names.iter().all(|n| !n.contains("._") && !n.contains("__MACOSX")), "còn file metadata: {names:?}");
+    }
+
+    #[test]
+    fn unpack_still_rejects_traversal_hidden_inside_a_metadata_entry() {
+        let dir = temp_dir("appledouble-trav");
+        let z = dir.join("a.zip");
+        make_zip(&z, &[("good.txt", b"ok", 0o644), ("../._evil", b"x", 0o644)]);
+        assert_eq!(unpack(&z, &dir.join("out")), Err(UpdateError::BadResponse));
+        assert!(!dir.join("out/good.txt").exists());
+    }
+
+    /// Mọi file (không phải thư mục) dưới `root`.
+    fn walk(root: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for e in std::fs::read_dir(root).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                out.extend(walk(&p));
+            } else {
+                out.push(p);
+            }
+        }
+        out
     }
 
     #[test]
