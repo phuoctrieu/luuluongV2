@@ -14,6 +14,7 @@ pub struct Config {
     pub ui: Ui,
     pub logger: Logger,
     pub vrain: Vrain,
+    pub update: Update,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,6 +89,22 @@ impl Logger {
 
     pub fn poll(&self) -> u32 {
         if self.poll_seconds == 0 { 5 } else { self.poll_seconds }
+    }
+}
+
+/// Cập nhật ứng dụng từ GitHub (xem `luuluong-update`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Update {
+    /// Tự kiểm tra bản mới khi mở app (tối đa một lần mỗi ngày).
+    pub auto_check: bool,
+    /// Giây epoch của lần kiểm tra thành công gần nhất; 0 = chưa từng.
+    pub last_check: i64,
+}
+
+impl Default for Update {
+    fn default() -> Self {
+        Self { auto_check: true, last_check: 0 }
     }
 }
 
@@ -206,6 +223,15 @@ mod tests {
         assert_eq!(c.vrain.refresh_minutes, 60);
         let ids: Vec<&str> = c.vrain.stations.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, ["841697470576", "84396786852", "84846302387"]);
+    }
+
+    #[test]
+    fn update_defaults_and_old_files_without_section() {
+        let c: Config = toml::from_str("[ui]\ntheme = \"dark\"\n").unwrap();
+        assert_eq!(c.update, Update { auto_check: true, last_check: 0 });
+        let partial: Config = toml::from_str("[update]\nlast_check = 1790000000\n").unwrap();
+        assert!(partial.update.auto_check, "thiếu khóa thì dùng mặc định");
+        assert_eq!(partial.update.last_check, 1_790_000_000);
     }
 
     #[test]

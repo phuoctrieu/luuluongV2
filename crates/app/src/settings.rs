@@ -39,6 +39,7 @@ pub struct SettingsForm {
     pub vrain_enabled: bool,
     pub vrain_username: String,
     pub vrain_refresh: String,
+    pub update_auto_check: bool,
     /// Nguồn chính (thẻ ngày).
     pub source: Source,
     /// Các nguồn bật để so sánh; nguồn chính luôn được tính vào.
@@ -64,6 +65,7 @@ impl SettingsForm {
             vrain_enabled: c.vrain.enabled,
             vrain_username: c.vrain.username.clone(),
             vrain_refresh: c.vrain.refresh_minutes.to_string(),
+            update_auto_check: c.update.auto_check,
             source,
             compare: c.weather.sources.iter().filter_map(|id| Source::from_id(id)).collect(),
             theme: c.ui.theme.clone(),
@@ -126,6 +128,7 @@ impl SettingsForm {
         c.weather.rain_alert_mm = rain;
         c.logger.url = url.to_string();
         c.logger.poll_seconds = poll as u32;
+        c.update.auto_check = self.update_auto_check; // last_check giữ nguyên từ `base`
         c.vrain.enabled = self.vrain_enabled;
         c.vrain.username = self.vrain_username.trim().to_string();
         c.vrain.refresh_minutes = vrain_refresh as u32;
@@ -305,6 +308,18 @@ mod tests {
         assert_eq!((c.vrain.username.as_str(), c.vrain.refresh_minutes), ("user1", 30));
         assert_eq!(c.vrain.stations, Config::default().vrain.stations);
         assert_eq!(SettingsForm::from_config(&c), f);
+    }
+
+    #[test]
+    fn settings_roundtrip_keeps_last_check() {
+        let mut base = Config::default();
+        base.update.last_check = 1_790_000_123;
+        let mut f = SettingsForm::from_config(&base);
+        assert!(f.update_auto_check);
+        f.update_auto_check = false;
+        let c = f.to_config(&base).unwrap();
+        assert!(!c.update.auto_check);
+        assert_eq!(c.update.last_check, 1_790_000_123, "lần kiểm tra gần nhất không bị biểu mẫu xóa");
     }
 
     #[test]
