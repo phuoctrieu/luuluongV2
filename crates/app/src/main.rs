@@ -540,6 +540,19 @@ fn card(p: &Palette) -> Frame {
         .inner_margin(Margin::same(CARD_PAD as i8))
 }
 
+/// Chip đỏ cảnh báo trên thanh đầu; `true` khi vừa được bấm.
+fn alert_chip(ui: &mut egui::Ui, p: &Palette, text: &str, id: &str, tooltip: &str) -> bool {
+    let chip = Frame::new()
+        .fill(p.error)
+        .stroke(Stroke::new(1.0_f32, p.header_text))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(Margin::symmetric(10, 3))
+        .show(ui, |ui| {
+            paint::note(ui, paint::Icon::Warn, p.on_error, 13.0, RichText::new(text).font(FontId::new(13.0, theme::semibold())));
+        });
+    ui.interact(chip.response.rect, Id::new(id), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tooltip).clicked()
+}
+
 fn accent_button(p: &Palette, text: &str) -> egui::Button<'static> {
     egui::Button::new(RichText::new(text.to_owned()).font(FontId::new(14.0, theme::semibold())).color(p.on_accent))
         .fill(p.accent)
@@ -582,7 +595,9 @@ impl eframe::App for App {
         self.shortcuts(ctx);
 
         let rain_alert = self.heavy_rain_alert();
+        let vrain_alert = self.vrain_alert();
         let mut goto_calc = false;
+        let mut goto_rain = false;
         egui::TopBottomPanel::top("nav")
             .frame(Frame::new().fill(p.header_bg).inner_margin(Margin::symmetric(16, 8)))
             .show(ctx, |ui| {
@@ -596,16 +611,11 @@ impl eframe::App for App {
                         ui.label(RichText::new(self.weather_status()).size(12.0).color(p.header_muted));
                         if let Some(text) = &rain_alert {
                             ui.add_space(12.0);
-                            let chip = Frame::new()
-                                .fill(p.error)
-                                .stroke(Stroke::new(1.0_f32, p.header_text))
-                                .corner_radius(CornerRadius::same(12))
-                                .inner_margin(Margin::symmetric(10, 3))
-                                .show(ui, |ui| {
-                                    paint::note(ui, paint::Icon::Warn, p.on_error, 13.0, RichText::new(text).font(FontId::new(13.0, theme::semibold())));
-                                });
-                            let r = ui.interact(chip.response.rect, Id::new("rain_alert_chip"), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Xem chi tiết ở tab Tính toán");
-                            goto_calc |= r.clicked();
+                            goto_calc |= alert_chip(ui, p, text, "rain_alert_chip", "Xem chi tiết ở tab Tính toán");
+                        }
+                        if let Some(text) = &vrain_alert {
+                            ui.add_space(12.0);
+                            goto_rain |= alert_chip(ui, p, text, "vrain_alert_chip", "Xem chi tiết ở tab Mưa");
                         }
                     });
                 });
@@ -613,6 +623,8 @@ impl eframe::App for App {
 
         if goto_calc {
             self.tab = Tab::Calc;
+        } else if goto_rain {
+            self.tab = Tab::Rain;
         }
         egui::TopBottomPanel::top("tabs")
             .frame(Frame::new().fill(p.card).stroke(Stroke::new(1.0_f32, p.border)).inner_margin(Margin::symmetric(16, 0)))

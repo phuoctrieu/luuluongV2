@@ -128,7 +128,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`;
 - [x] K3 `report.rs`: kỳ ngày/tháng/năm, dòng báo cáo, tổng, `parse_range` — 11 test
 - [x] K4 `storage::xlsx_report` ghi .xlsx (+ dependency `rust_xlsxwriter` 0.96) — 6 test
 - [x] K5 Tab Báo cáo (phím 6), xuất Excel 3 sheet — 5 test (to_sheets, file_name); CHƯA kiểm tay (người dùng mở tab Báo cáo, xuất, mở bằng Excel/Numbers, so một ngày với Lịch sử)
-- [ ] K6 Chip cảnh báo mưa Vrain trên thanh đầu — kiểm tay
+- [x] K6 Chip cảnh báo mưa Vrain trên thanh đầu (logic có test ở K2; bấm chip → tab Mưa) — CHƯA kiểm tay
 - [ ] K7 Nghiệm thu, tài liệu, đo kích thước file
 
 ## Đang làm

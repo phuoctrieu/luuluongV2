@@ -82,6 +82,15 @@ impl App {
         }
     }
 
+    /// Văn bản chip cảnh báo mưa lớn Vrain trên thanh đầu (mưa 24 giờ ≥ ngưỡng ngày hoặc mưa 1 giờ > 7,6 mm; chỉ số liệu mới).
+    pub(super) fn vrain_alert(&self) -> Option<String> {
+        if !self.config.vrain.enabled {
+            return None;
+        }
+        let stations: Vec<(String, String)> = self.config.vrain.stations.iter().map(|s| (s.id.clone(), s.name.clone())).collect();
+        app::rain::heavy_alert(&self.rain_obs, &stations, unix_now(), self.config.weather.rain_alert_mm).map(|a| a.text)
+    }
+
     pub(super) fn poll_vrain(&mut self) {
         let Some(rx) = &self.vrain_rx else { return };
         let batch: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
