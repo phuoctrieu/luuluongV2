@@ -8,3 +8,4 @@ livrables/*.dmg
 livrables/*.zip
 livrables/*.app/
 livrables/stage*/
+.superpowers/

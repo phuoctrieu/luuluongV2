@@ -38,7 +38,7 @@
 **Files:**
 - Modify: `scripts/probe_vrain_login.py` (thêm kiểm tra, không ghi mật khẩu)
 
-**Interfaces:** Produces: ba kết luận ghi vào `contexte/vrain-api.md` — (a) `from` nhiều ngày có trả đủ mốc không (quyết định `BACKFILL_DAYS` = 2 hay 0), (b) `x-org-uuid` có bắt buộc không, (c) mốc giờ hiện tại có số ngay không.
+**Interfaces:** Produces: ba kết luận ghi vào `contexte/vrain-api.md`. **KẾT QUẢ (đã chạy 2026-11-05):** (a) nhiều ngày dùng được → `BACKFILL_DAYS = 2`; (b) `x-org-uuid` BẮT BUỘC (thiếu → 401); (c) `timePoint` là mốc cuối giờ, không có mốc một phần.
 
 - [ ] **Step 1:** Thêm vào script: gọi `details?i=_1h` với `from` = hôm kia, `to` = hôm nay, in số mốc và `timePoint` đầu/cuối; gọi lại không có header `x-org-uuid`, in mã HTTP; in `timePoint` cuối cùng cùng giờ hiện tại để thấy mốc cuối có là giờ chưa trọn.
 - [ ] **Step 2:** Người dùng chạy `! python3 scripts/probe_vrain_login.py`, dán kết quả.
@@ -155,7 +155,8 @@ Mặc định `Vrain`: `enabled = false`, `username = ""`, `refresh_minutes = 60
 **Interfaces — Consumes:** `luuluong_storage::RainObs`, `averages::window_averages` (để lấy mưa ECAPRO 3 giờ/12 giờ/1 ngày/1 tuần). **Produces:**
 ```rust
 pub fn rain_sum(obs: &[RainObs], station_id: &str, now: i64, hours: u32) -> Option<f64>;
-    // tổng các mốc ts ∈ (now − hours·3600, now]; None nếu số mốc < hours (thiếu số liệu, không nội suy)
+    // Ruling (sau J0): neo cửa sổ vào mốc MỚI NHẤT của trạm: L = ts lớn nhất của station_id; tổng các mốc ts ∈ (L − hours·3600, L];
+    // None nếu không có mốc nào hoặc số mốc < hours (thiếu số liệu, không nội suy). Lý do: ngay sau giờ tròn mốc mới còn trễ vài phút, neo vào `now` sẽ cho '—'. `now` chỉ dùng cho `is_stale`.
 pub enum RainLevel { None, Light, Moderate, Heavy }
 pub fn level(mm_per_hour: f64) -> RainLevel;   // 0 → None; ≤ 2,5 → Light; ≤ 7,6 → Moderate; > 7,6 → Heavy
 pub fn level_label(l: RainLevel) -> &'static str; // "Không mưa" / "Mưa nhỏ" / "Mưa vừa" / "Mưa to"
@@ -174,7 +175,7 @@ impl RefreshGate {
 ```
 Quy tắc cổng: chưa `configured` → `NeedsSetup`, `try_start` = false; đang `busy` → `Loading`, false; cách lần bấm trước < 30 s → `Wait(30 − Δ)`, false; còn lại `Idle` và `try_start` đặt `busy`, ghi `last_request`.
 
-- [ ] **Step 1: Test thất bại:** `sum_1h_3h_24h_exact`, `sum_none_when_hour_missing`, `sum_other_station_ignored`, `level_thresholds` (0 → None; 2,5 → Light; 2,6 → Moderate; 7,6 → Moderate; 7,7 → Heavy), `stale_after_two_hours_or_never`, `compare_note_threshold`, `gate_blocks_second_click_within_30s_then_allows`, `gate_busy_blocks_until_finish`, `gate_needs_setup_when_not_configured`, `gate_wait_counts_down`, `series_orders_and_limits`.
+- [ ] **Step 1: Test thất bại:** `sum_1h_3h_24h_exact`, `sum_anchors_to_latest_obs_not_now`, `sum_none_when_hour_missing`, `sum_other_station_ignored`, `level_thresholds` (0 → None; 2,5 → Light; 2,6 → Moderate; 7,6 → Moderate; 7,7 → Heavy), `stale_after_two_hours_or_never`, `compare_note_threshold`, `gate_blocks_second_click_within_30s_then_allows`, `gate_busy_blocks_until_finish`, `gate_needs_setup_when_not_configured`, `gate_wait_counts_down`, `series_orders_and_limits`.
 - [ ] **Step 2–4:** FAIL → cài đặt → PASS + clippy.
 - [ ] **Step 5: Commit** `Vrain 5: tổng hợp mưa, mức mưa, cổng nút cập nhật (11 test)`.
 

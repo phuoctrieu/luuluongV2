@@ -16,9 +16,12 @@ Nguồn mô tả ban đầu: `vrain-rainfall-spec.md`. Dưới đây là phần 
 - `stats/summary` trả **danh sách** (1 phần tử nhóm: `groupMapsUrl, groupName, groupOrgUuid, stats, statsMax`), mỗi trạm nằm trong `stats` lồng bên trong; `sumDepth`, `from`, `to`, `level` như spec.
 - Chu kỳ hợp lệ: `_10m _1h _3h _6h _12h _1d _1mo`.
 
+## Đã xác minh thêm (J0, 2026-11-05 10:34 giờ VN)
+- **Nhiều ngày:** `from` = hôm kia, `to` = hôm nay cho 64 mốc, bắt đầu 20:00 ngày trước `from` (cửa sổ luôn bắt đầu 19:00 hôm trước `from`). Lấy bù 2 ngày dùng được.
+- **`x-org-uuid` BẮT BUỘC:** thiếu header này → HTTP 401 dù cookie `sid` hợp lệ.
+- **`timePoint` là mốc CUỐI của giờ:** lúc 10:34 mốc giờ cuối là "10:00" (= mưa 09:00–10:00), mốc `_10m` cuối là "10:30"; không có mốc một phần cho giờ đang chạy. Mốc "11:00" xuất hiện sau 11:00 (độ trễ vài phút chưa đo).
+
 ## Chưa xác minh
-- `timePoint` là mốc CUỐI hay ĐẦU của giờ (đang giả định: cuối; ví dụ "10:00" = mưa 09:00–10:00). Kiểm bằng cách đối chiếu với kênh 1 ECAPRO khi có mưa.
-- Mốc giờ hiện tại (chưa đủ giờ) là số liệu một phần hay không.
-- `x-org-uuid` có bắt buộc không (lần chạy thật luôn gửi kèm).
-- `from`/`to` nhiều ngày có trả đủ để lấp khoảng trống khi app tắt không.
-- Điều khoản sử dụng của Vrain về lấy dữ liệu tự động.
+- Đối chiếu mưa thật với kênh 1 ECAPRO khi có mưa (Task 8 của kế hoạch).
+- Độ trễ từ lúc hết giờ tới lúc mốc giờ xuất hiện.
+- Điều khoản sử dụng của Vrain về lấy dữ liệu tự động (chủ dự án xác nhận được dùng chung tài khoản).

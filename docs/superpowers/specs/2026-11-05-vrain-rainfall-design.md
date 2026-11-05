@@ -66,8 +66,8 @@ Mạng/401/5xx → dùng dữ liệu đã lưu kèm nhãn; sai tài khoản → 
 `cargo test --workspace` và `cargo clippy --workspace -- -D warnings` sạch; T1–T6 vẫn pass.
 
 ## 7. Quyết định của tôi (chủ dự án xem lại)
-- **Mốc `timePoint` = cuối giờ** (chưa xác minh — phải kiểm ở bước 6).
-- Lần đầu mở app lấy bù tối đa **3 ngày** (`from` = hôm kia); chưa biết API có trả nhiều ngày không — kiểm ở bước đầu của kế hoạch, nếu không thì chỉ lấy hôm nay.
+- **Mốc `timePoint` = cuối giờ** (đã xác minh bằng J0; còn đối chiếu với ECAPRO khi có mưa).
+- Lần đầu mở app lấy bù tối đa **3 ngày** (`from` = hôm kia); API trả nhiều ngày (đã xác minh J0).
 - Phím tắt tab: thêm tab "Mưa" làm **tab thứ 5** để không đổi phím 1–4 đang dùng (Lịch sử và Cài đặt giữ nguyên).
 - Ngưỡng cảnh báo dùng lại ngưỡng mưa ngày của thời tiết (50 mm).
 - Mức mưa bằng chữ lấy từ chính Vrain khi có (`level` ở `stats/summary`); nếu chỉ có `details` thì tự phân loại theo mm/giờ (ngưỡng nêu trong kế hoạch).
