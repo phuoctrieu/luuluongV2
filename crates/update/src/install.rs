@@ -66,7 +66,7 @@ fn old_path(target: &Target) -> PathBuf {
     }
 }
 
-fn map_io(e: &std::io::Error) -> UpdateError {
+pub(crate) fn map_io(e: &std::io::Error) -> UpdateError {
     match e.kind() {
         ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => UpdateError::NotWritable,
         _ => UpdateError::Io,
