@@ -22,3 +22,10 @@ Ghi chú vận hành: q mỗi tổ máy mặc định 17,3 m³/s (cần xác nh�
 - Cột trạng thái KHÔNG dùng để loại số đo: kênh 16 (mực nước) báo trạng thái 0 nhưng giá trị đúng (157,189, khớp kênh 9 và 15); kênh 7, 11, 14 cũng 0 mà vẫn có số. Mã chỉ coi 2/3 là cảnh báo thấp/cao. (Ghi chú "0 = không kết nối" trong `huong-dan-lay-mntl-hien-tai.md` không đúng cho các kênh này.) Hệ quả chưa xử lý: nếu thiết bị mất cảm biến mà vẫn trả số cũ thì app không phân biệt được.
 - Kênh dùng: 16 mực nước hồ; 5 lưu lượng máy H1; 6 lưu lượng máy H2; 2 `DCTT|LUULUONG` = 1,5 m³/s (xả môi trường đo thật).
 - Kênh có thể dùng đối chiếu sau (chưa dùng): 7 `NHAMAY|LUULUONG` (tổng nhà máy); 4 `LUU LUONG VE old` và 14 `LLVT new` (lưu lượng về do chính thiết bị tính, để so với số của app); 11 `DENHO|LUULUONG` = 18,04.
+
+## Mưa Vrain (2026-11-05)
+Mưa theo giờ của 3 trạm Vrain ở A Lưới (Hương Nguyên, A Đớt, Tà Lương) chỉ để **hiển thị và so sánh** với kênh 1 ECAPRO; KHÔNG đi vào công thức lưu lượng về (mục 3 đặc tả giữ nguyên).
+- Cộng dồn: tổng các mốc giờ tính đến **mốc mới nhất của từng trạm** (không tính đến `now`, vì mốc giờ trễ vài phút); thiếu một mốc trong khoảng thì "—", không nội suy. Mốc "10:00" = mưa 09:00–10:00; mốc "00:00" thuộc ngày trước đó.
+- Mức mưa theo mm/giờ: 0 không mưa; ≤ 2,5 nhỏ; ≤ 7,6 vừa; lớn hơn là to (ngưỡng tự đặt, không phải của Vrain).
+- So sánh với trạm nhà máy: mưa trung bình 24 giờ của 3 trạm Vrain so với "1 ngày" của ECAPRO (chỉ khi app đã chạy ≥ 90 % ngày); chênh ≥ nửa ngưỡng cảnh báo mưa ngày thì nhắc kiểm tra cảm biến.
+- Chi tiết API và điều đã xác minh: `contexte/vrain-api.md`.
