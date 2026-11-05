@@ -146,6 +146,9 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-cap-nhat-tu-dong-design.md`; k�
 - [x] M7 `package_macos.sh` tạo thêm `.app.zip` (ditto --norsrc --noextattr --noqtn), `release.yml` đính kèm `.app.zip`, `livrables/QUY-TRINH-PHAT-HANH.md`; đã kiểm với gói `.app` giả: chữ ký ký tạm còn hợp lệ sau khi giải nén bằng thư viện zip của app. CHƯA chạy script đầy đủ và CHƯA chạy workflow (cần build 2 kiến trúc / gắn thẻ — việc của chủ dự án)
 - [x] M8 nghiệm thu tự động: 383 test pass (315 → 383 sau OTA), clippy sạch, tài liệu `contexte/cap-nhat.md`, `livrables/QUY-TRINH-PHAT-HANH.md`. CÒN LẠI cần người dùng: kiểm tay thẻ Cập nhật/chip; phát hành thử (0.2.x → 0.3.0) và cập nhật thật trên macOS + Windows (xem quy trình); chạy đầy đủ `package_macos.sh` để chắc `.app.zip` hợp lệ trên bản universal
 
+### Giai đoạn 13 — Phát hành 0.3.0 (2026-11-05)
+- [x] Tăng `version` 0.2.0 → 0.3.0 (`crates/app/Cargo.toml`, `Cargo.lock`); thẻ `v0.3.0` kích `release.yml` (macOS universal `.dmg` + `.app.zip`, Windows `.zip`). Bản đầu có tính năng cập nhật: cài tay trên từng máy, từ bản sau mới tự cập nhật.
+
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
 
