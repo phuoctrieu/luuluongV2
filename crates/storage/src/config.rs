@@ -13,6 +13,7 @@ pub struct Config {
     pub weather: Weather,
     pub ui: Ui,
     pub logger: Logger,
+    pub vrain: Vrain,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -90,6 +91,45 @@ impl Logger {
     }
 }
 
+/// Mưa quan trắc Vrain (xem `luuluong-vrain`). Mật khẩu KHÔNG nằm ở đây (Keychain).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Vrain {
+    pub enabled: bool,
+    pub username: String,
+    /// Chu kỳ lấy tự động (phút).
+    pub refresh_minutes: u32,
+    /// Giá trị header `x-org-uuid` (bắt buộc với API Vrain; không bí mật).
+    pub org_uuid: String,
+    pub stations: Vec<VrainStation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VrainStation {
+    pub id: String,
+    pub name: String,
+}
+
+impl Default for Vrain {
+    fn default() -> Self {
+        let st = |id: &str, name: &str| VrainStation { id: id.into(), name: name.into() };
+        Self {
+            enabled: false,
+            username: String::new(),
+            refresh_minutes: 60,
+            org_uuid: "d50c9e31-74b5-4f44-b2c9-ba76c073340a".into(),
+            stations: vec![st("841697470576", "Hương Nguyên"), st("84396786852", "A Đớt"), st("84846302387", "Tà Lương")],
+        }
+    }
+}
+
+impl Vrain {
+    /// Dưới 5 phút (kể cả 0) được đưa về 60 để không gây tải cho Vrain.
+    pub fn refresh(&self) -> u32 {
+        if self.refresh_minutes < 5 { 60 } else { self.refresh_minutes }
+    }
+}
+
 impl Default for Reservoir {
     fn default() -> Self {
         Self { z_min: 149.0, z_max: 165.0, volume_table: "builtin".into() }
@@ -157,6 +197,25 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vrain_defaults_and_old_files_without_section() {
+        let c: Config = toml::from_str("[ui]\ntheme = \"dark\"\n").unwrap();
+        assert_eq!(c.vrain, Vrain::default());
+        assert!(!c.vrain.enabled);
+        assert_eq!(c.vrain.refresh_minutes, 60);
+        let ids: Vec<&str> = c.vrain.stations.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["841697470576", "84396786852", "84846302387"]);
+    }
+
+    #[test]
+    fn vrain_refresh_below_5_becomes_60() {
+        let mut v = Vrain::default();
+        for (input, want) in [(0, 60), (1, 60), (4, 60), (5, 5), (30, 30), (60, 60)] {
+            v.refresh_minutes = input;
+            assert_eq!(v.refresh(), want, "refresh_minutes = {input}");
+        }
+    }
 
     fn temp(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("luuluong-config-test-{}", std::process::id()));

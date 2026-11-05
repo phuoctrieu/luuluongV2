@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::history::Record;
+use crate::history::{vn_timestamp, RainObs, Record};
 
 const HEADER: [&str; 14] = [
     "Thời điểm",
@@ -56,6 +56,18 @@ pub fn to_csv(records: &[Record]) -> String {
     format!("\u{feff}{}", String::from_utf8(bytes).expect("csv do chính ta ghi là UTF-8"))
 }
 
+/// Mưa Vrain theo giờ; `names` = (id, tên hiển thị), thiếu tên thì ghi id.
+pub fn rain_to_csv(obs: &[RainObs], names: &[(String, String)]) -> String {
+    let mut w = csv::WriterBuilder::new().delimiter(b';').from_writer(Vec::new());
+    w.write_record(["Thời điểm", "Trạm", "Lượng mưa (mm)"]).expect("ghi vào bộ nhớ không lỗi");
+    for o in obs {
+        let name = names.iter().find(|(id, _)| *id == o.station_id).map_or(o.station_id.as_str(), |(_, n)| n.as_str());
+        w.write_record([vn_timestamp(o.ts), name.to_string(), num(o.mm)]).expect("ghi vào bộ nhớ không lỗi");
+    }
+    let bytes = w.into_inner().expect("ghi vào bộ nhớ không lỗi");
+    format!("\u{feff}{}", String::from_utf8(bytes).expect("csv do chính ta ghi là UTF-8"))
+}
+
 pub fn write_csv(path: &Path, records: &[Record]) -> std::io::Result<()> {
     std::fs::write(path, to_csv(records))
 }
@@ -63,6 +75,17 @@ pub fn write_csv(path: &Path, records: &[Record]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rain_csv_has_bom_semicolon_comma_and_names() {
+        let obs = vec![RainObs { station_id: "a".into(), ts: 1_794_000_000, mm: 0.2 }, RainObs { station_id: "zz".into(), ts: 1_794_000_000, mm: 12.5 }];
+        let out = rain_to_csv(&obs, &[("a".into(), "Tà Lương".into())]);
+        assert!(out.starts_with('\u{feff}'));
+        let lines: Vec<&str> = out.trim_start_matches('\u{feff}').lines().collect();
+        assert_eq!(lines[0], "Thời điểm;Trạm;Lượng mưa (mm)");
+        assert_eq!(lines[1], format!("{};Tà Lương;0,2", vn_timestamp(1_794_000_000)));
+        assert_eq!(lines[2], format!("{};zz;12,5", vn_timestamp(1_794_000_000)));
+    }
 
     fn rec(note: &str) -> Record {
         Record {

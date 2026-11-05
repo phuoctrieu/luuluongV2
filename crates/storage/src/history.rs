@@ -38,6 +38,14 @@ pub struct History {
     conn: Connection,
 }
 
+/// Mưa một trạm trong một giờ (Vrain). `ts` = epoch giây (UTC) của CUỐI giờ.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RainObs {
+    pub station_id: String,
+    pub ts: i64,
+    pub mm: f64,
+}
+
 /// Thời điểm `unix` (giây, UTC) dưới dạng ISO 8601 giờ Việt Nam (UTC+7).
 pub fn vn_timestamp(unix: i64) -> String {
     let vn = FixedOffset::east_opt(7 * 3600).expect("UTC+7 hợp lệ");
@@ -62,7 +70,14 @@ CREATE TABLE IF NOT EXISTS calc (
     operator   TEXT NOT NULL DEFAULT '',
     note       TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_calc_created ON calc(created_at);";
+CREATE INDEX IF NOT EXISTS idx_calc_created ON calc(created_at);
+CREATE TABLE IF NOT EXISTS rain_obs (
+    station_id TEXT NOT NULL,
+    ts         TEXT NOT NULL,
+    mm         REAL NOT NULL,
+    interval   TEXT NOT NULL DEFAULT '_1h',
+    PRIMARY KEY (station_id, ts, interval)
+);";
 
 const COLUMNS: &str = "id, created_at, z_start, z_end, hours, h1, h2, spill_q, spill_h, eco_q, q_in, w_in, operator, note, rain_mm";
 
@@ -135,6 +150,33 @@ impl History {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Ghi mưa theo giờ; cùng (trạm, giờ) thì thay giá trị cũ. Trả số dòng đã ghi.
+    pub fn upsert_rain(&self, obs: &[RainObs]) -> Result<usize, StorageError> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare("INSERT OR REPLACE INTO rain_obs (station_id, ts, mm, interval) VALUES (?1, ?2, ?3, '_1h')")?;
+            for o in obs {
+                stmt.execute(rusqlite::params![o.station_id, vn_timestamp(o.ts), o.mm])?;
+            }
+        }
+        tx.commit()?;
+        Ok(obs.len())
+    }
+
+    /// Mưa từ thời điểm `from_unix` (giây, UTC) trở đi, cũ trước.
+    pub fn rain_since(&self, from_unix: i64) -> Result<Vec<RainObs>, StorageError> {
+        let mut stmt = self.conn.prepare("SELECT station_id, ts, mm FROM rain_obs WHERE ts >= ?1 ORDER BY ts ASC, station_id ASC")?;
+        let rows = stmt.query_map([vn_timestamp(from_unix)], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, f64>(2)?)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (station_id, ts, mm) = row?;
+            if let Ok(t) = DateTime::parse_from_rfc3339(&ts) {
+                out.push(RainObs { station_id, ts: t.timestamp(), mm });
+            }
+        }
+        Ok(out)
+    }
+
     pub fn delete(&self, id: i64) -> Result<(), StorageError> {
         self.conn.execute("DELETE FROM calc WHERE id = ?1", [id])?;
         Ok(())
@@ -144,6 +186,53 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ro(id: &str, ts: i64, mm: f64) -> RainObs {
+        RainObs { station_id: id.into(), ts, mm }
+    }
+
+    #[test]
+    fn rain_upsert_is_idempotent() {
+        let h = History::open_in_memory().unwrap();
+        let obs = vec![ro("a", 1_790_000_000, 0.2), ro("b", 1_790_000_000, 0.4)];
+        h.upsert_rain(&obs).unwrap();
+        h.upsert_rain(&obs).unwrap();
+        assert_eq!(h.rain_since(0).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn rain_later_value_replaces_earlier_for_same_hour() {
+        let h = History::open_in_memory().unwrap();
+        h.upsert_rain(&[ro("a", 1_790_000_000, 0.2)]).unwrap();
+        h.upsert_rain(&[ro("a", 1_790_000_000, 0.6)]).unwrap();
+        assert_eq!(h.rain_since(0).unwrap(), vec![ro("a", 1_790_000_000, 0.6)]);
+    }
+
+    #[test]
+    fn rain_since_filters_and_orders_ascending() {
+        let h = History::open_in_memory().unwrap();
+        h.upsert_rain(&[ro("a", 1_790_007_200, 3.0), ro("a", 1_790_000_000, 1.0), ro("a", 1_790_003_600, 2.0)]).unwrap();
+        let got = h.rain_since(1_790_003_600).unwrap();
+        assert_eq!(got, vec![ro("a", 1_790_003_600, 2.0), ro("a", 1_790_007_200, 3.0)]);
+    }
+
+    #[test]
+    fn rain_old_database_without_table_gets_it() {
+        let path = std::env::temp_dir().join(format!("luuluong-rain-old-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE calc (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, z_start REAL NOT NULL, z_end REAL NOT NULL, hours REAL NOT NULL, h1 REAL NOT NULL, h2 REAL NOT NULL, spill_q REAL NOT NULL, spill_h REAL NOT NULL, eco_q REAL NOT NULL, q_in REAL NOT NULL, w_in REAL NOT NULL, operator TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '');",
+            )
+            .unwrap();
+        }
+        let h = History::open(&path).unwrap();
+        h.upsert_rain(&[ro("a", 1_790_000_000, 0.2)]).unwrap();
+        assert_eq!(h.rain_since(0).unwrap().len(), 1);
+        drop(h);
+        let _ = std::fs::remove_file(&path);
+    }
 
     fn rec(created_at: &str, q: f64) -> Record {
         Record {
