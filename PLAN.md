@@ -140,7 +140,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-cap-nhat-tu-dong-design.md`; k�
 - [x] M1 `crates/update`: phiên bản, đọc release — 14 test
 - [x] M2 gọi API và tải có kiểm SHA-256 — 10 test
 - [x] M3 giải nén zip an toàn — 7 test
-- [ ] M4 thay thế bằng đổi tên có quay lui, dọn — 10 test
+- [x] M4 thay thế bằng đổi tên có quay lui, dọn — 12 test
 - [ ] M5 cấu hình `[update]`, lịch kiểm tra — 6 test
 - [ ] M6 tích hợp app: trạng thái, thẻ Cập nhật, chip — 7 test + kiểm tay
 - [ ] M7 đóng gói `.app.zip`, CI, quy trình phát hành
