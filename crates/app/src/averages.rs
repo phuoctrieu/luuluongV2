@@ -115,6 +115,25 @@ pub fn window_averages(records: &[Record], now: i64) -> Vec<WindowAverage> {
         .collect()
 }
 
+/// Lưu lượng về trong một khoảng bất kỳ `[from, to)` (epoch giây), cho báo cáo theo ngày/tháng/năm.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowSpan {
+    /// Bình quân theo thời gian có số liệu (m³/s); `None` nếu không có chu kỳ nào trong khoảng.
+    pub q_avg: Option<f64>,
+    /// Tỷ lệ thời gian của khoảng có số liệu, 0..=1.
+    pub covered: f64,
+    /// Tổng lượng nước về (m³) = Q trung bình × thời gian có số liệu.
+    pub volume_m3: Option<f64>,
+}
+
+pub fn flow_between(records: &[Record], from: i64, to: i64) -> FlowSpan {
+    if to <= from {
+        return FlowSpan { q_avg: None, covered: 0.0, volume_m3: None };
+    }
+    let s = span(&segments(records), from, to);
+    FlowSpan { q_avg: s.q_avg, covered: s.covered, volume_m3: s.q_avg.map(|q| q * s.covered * (to - from) as f64) }
+}
+
 /// `days` ngày gần nhất tính cả hôm nay, cũ trước. Chu kỳ vắt qua nửa đêm được chia cho hai ngày.
 pub fn daily_stats(records: &[Record], now: i64, days: usize) -> Vec<DayStat> {
     let segs = segments(records);
@@ -187,6 +206,38 @@ mod tests {
         let v = window_averages(&[wet(175, 15, 10.0, 3.0)], NOW);
         assert!((get(&v, "3 giờ").rain_mm.unwrap() - 1.0).abs() < 1e-9);
         assert!((get(&v, "12 giờ").rain_mm.unwrap() - 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn flow_between_matches_hand_calculation() {
+        // Hai chu kỳ 15 phút liền nhau (q = 10 rồi 20) trong khoảng 1 giờ.
+        let r = [cycle(45, 15, 10.0), cycle(30, 15, 20.0)];
+        let f = flow_between(&r, NOW - 3600, NOW);
+        assert_eq!(f.q_avg, Some(15.0));
+        assert!((f.covered - 0.5).abs() < 1e-9);
+        assert!((f.volume_m3.unwrap() - 27_000.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn flow_between_cuts_cycle_at_the_edges() {
+        // Chu kỳ chiếm [NOW-25p, NOW-10p]; khoảng [NOW-15p, NOW) chỉ chứa 5 phút cuối.
+        let f = flow_between(&[cycle(10, 15, 10.0)], NOW - 900, NOW);
+        assert_eq!(f.q_avg, Some(10.0));
+        assert!((f.covered - 300.0 / 900.0).abs() < 1e-9);
+        assert!((f.volume_m3.unwrap() - 3_000.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn flow_between_empty_is_none() {
+        for f in [flow_between(&[], NOW - 3600, NOW), flow_between(&[cycle(10, 15, 10.0)], NOW, NOW - 3600), flow_between(&[cycle(10, 15, 10.0)], NOW, NOW)] {
+            assert_eq!(f, FlowSpan { q_avg: None, covered: 0.0, volume_m3: None });
+        }
+    }
+
+    #[test]
+    fn flow_between_ignores_manual_rows() {
+        let manual = Record { note: "tính tay".into(), operator: "Linh".into(), ..cycle(10, 15, 99.0) };
+        assert_eq!(flow_between(&[manual], NOW - 3600, NOW).q_avg, None);
     }
 
     fn at(rfc3339: &str) -> i64 {
