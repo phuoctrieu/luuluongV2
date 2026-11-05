@@ -119,7 +119,7 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế
 - [x] J5 Logic thuần app: tổng hợp, mức mưa, `RefreshGate` (12 test)
 - [x] J6 Nối luồng nền + Cài đặt Vrain + Keychain (4 test cài đặt; chưa thử với tài khoản thật — chạy `set -a; source .env; set +a; cargo run -p app`)
 - [x] J7 Giao diện: thẻ tóm tắt, tab Mưa (tab 5), nút Cập nhật ngay (Cmd/Ctrl+Shift+R) — code + test xong; CHƯA nhìn bằng mắt (cần người dùng chạy app với dữ liệu giả, xem kế hoạch Task 7 Step 2)
-- [ ] J8 Nghiệm thu, thử thật, tài liệu. Đã chốt 2026-11-05: chủ dự án được dùng chung tài khoản; chưa đọc điều khoản Vrain về lấy tự động
+- [ ] J8 Nghiệm thu: test 280 pass, clippy sạch, tài liệu xong (contexte, MAP). CÒN LẠI cần người dùng: (1) chạy app với tài khoản thật (J6 bước 5), đối chiếu 1 mốc giờ với vrain.vn, và khi có mưa so `timePoint` với kênh 1 ECAPRO; (2) xem bằng mắt thẻ mưa + tab Mưa sáng/tối (J7); (3) đo RSS/khởi động; (4) quyết định xóa `scripts/probe_vrain_login.py`, tăng phiên bản 0.2.0→0.3.0. Đã chốt 2026-11-05: được dùng chung tài khoản; chưa đọc điều khoản Vrain.
 
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
