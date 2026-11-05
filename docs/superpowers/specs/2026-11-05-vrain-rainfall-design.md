@@ -48,6 +48,14 @@ Bảng `rain_obs`: `station_id TEXT, ts TEXT (ISO 8601, +07:00, MỐC CUỐI gi�
 ### 5.4 Lỗi (đúng nguyên tắc mục 8 đặc tả gốc)
 Mạng/401/5xx → dùng dữ liệu đã lưu kèm nhãn; sai tài khoản → "Tài khoản Vrain không đúng, kiểm tra trong Cài đặt"; JSON đổi cấu trúc → ghi log, dừng cập nhật Vrain, **phần tính lưu lượng không ảnh hưởng**. Chi tiết kỹ thuật chỉ ghi log.
 
+### 5.3b Nút "Cập nhật ngay" (chủ dự án yêu cầu 2026-11-05)
+- Có ở **thẻ tóm tắt** (tab Tính toán) và **tab Mưa**, cùng một hành vi: lấy `details` ngay, không chờ chu kỳ 60 phút.
+- Khi đang tải: nút khóa, hiện "Đang cập nhật…"; xong hiện "Cập nhật lúc HH:MM"; lỗi thì giữ số cũ kèm câu tiếng Việt ngắn.
+- Bấm liên tiếp: chặn 30 giây từ lần bấm trước, nút hiện "Thử lại sau N giây" (tránh gây tải cho Vrain; ngưỡng đặt trong mã, không thành cấu hình).
+- Chưa cấu hình tài khoản: nút dẫn tới Cài đặt → Vrain.
+- Phím tắt: Cmd/Ctrl + Shift + R (Cmd/Ctrl + R đã dùng để làm mới thời tiết).
+- Kiểm: test thuần cho bộ hạn chế 30 giây và máy trạng thái nút (rảnh → đang tải → rảnh/lỗi); chụp ảnh các trạng thái.
+
 ## 6. Kiểm chứng (từng bước kèm cách kiểm)
 1. Parser: test trên mẫu thật rút gọn (`tests/data/vrain_details.json` chỉ giữ 3 trạm, không chứa dữ liệu nhạy cảm): mốc "Tổng" bị bỏ; `depth` chuỗi → số; năm suy đúng qua giao thừa; thiếu trạm → cảnh báo, không lỗi; cấu trúc sai → lỗi.
 2. Client với `mockito`: 200, 401 → đăng nhập lại 1 lần, 500, timeout, JSON sai.

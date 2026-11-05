@@ -109,6 +109,18 @@ Công thức mục 3 giữ nguyên: `V_tuabin = (H1·Q1 + H2·Q2)·3600` với H
 
 Đã chốt (2026-10-28, phần xả môi trường và mốc đồng hồ vẫn đúng; phần tuabin bị 6b thay), chỉ tính xả môi trường 1,5 m³/s; mốc chu kỳ cố định theo đồng hồ. Cần xác nhận: 1,5 m³/s được CỘNG vào ΔV/Δt (nước xả đi nên lượng về lớn hơn mực nước tăng), không phải trừ.
 
+### Giai đoạn 9 — Mưa quan trắc Vrain (3 trạm A Lưới) (yêu cầu 2026-11-05)
+Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế hoạch chi tiết (bước, test, chữ ký hàm): `docs/superpowers/plans/2026-11-05-vrain-rainfall.md`; API đã xác minh: `contexte/vrain-api.md`. Gồm nút "Cập nhật ngay" (cách nhau ≥ 30 giây).
+- [ ] J0 Thăm dò: nhiều ngày, `x-org-uuid`, mốc giờ hiện tại — người dùng chạy script, ghi vào contexte
+- [ ] J1 Crate `luuluong-vrain`: `parse_details` (6 test)
+- [ ] J2 Client đăng nhập cookie `sid`, đăng nhập lại 1 lần (7 test)
+- [ ] J3 Luồng nền có trigger (4 test)
+- [ ] J4 Lưu trữ `rain_obs`, CSV, `[vrain]` trong config (7 test)
+- [ ] J5 Logic thuần app: tổng hợp, mức mưa, `RefreshGate` (11 test)
+- [ ] J6 Nối luồng nền + Cài đặt Vrain + Keychain
+- [ ] J7 Giao diện: thẻ tóm tắt, tab Mưa (tab 5), nút Cập nhật ngay; chụp ảnh sáng/tối
+- [ ] J8 Nghiệm thu, thử thật, tài liệu. Còn mở: được phép dùng tài khoản dùng chung `thuathienhue` cho app tự động không (điều khoản Vrain)
+
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
 
