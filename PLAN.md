@@ -121,6 +121,16 @@ Thiết kế: `docs/superpowers/specs/2026-11-05-vrain-rainfall-design.md`; kế
 - [x] J7 Giao diện: thẻ tóm tắt, tab Mưa (tab 5), nút Cập nhật ngay (Cmd/Ctrl+Shift+R) — code + test xong; CHƯA nhìn bằng mắt (cần người dùng chạy app với dữ liệu giả, xem kế hoạch Task 7 Step 2)
 - [ ] J8 Nghiệm thu: test 280 pass, clippy sạch, tài liệu xong (contexte, MAP). CÒN LẠI cần người dùng: (1) chạy app với tài khoản thật (J6 bước 5), đối chiếu 1 mốc giờ với vrain.vn, và khi có mưa so `timePoint` với kênh 1 ECAPRO; (2) xem bằng mắt thẻ mưa + tab Mưa sáng/tối (J7); (3) đo RSS/khởi động; (4) quyết định xóa `scripts/probe_vrain_login.py`, tăng phiên bản 0.2.0→0.3.0. Đã chốt 2026-11-05: được dùng chung tài khoản; chưa đọc điều khoản Vrain.
 
+### Giai đoạn 10 — Chip cảnh báo mưa Vrain và Báo cáo Excel (yêu cầu 2026-11-05)
+Thiết kế: `docs/superpowers/specs/2026-11-05-bao-cao-va-chip-mua-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-05-bao-cao-va-chip-mua.md`. Ngoại lệ 7.1: thêm `rust_xlsxwriter` (chủ dự án đồng ý 2026-11-05). Báo cáo chỉ 2 trạm Hương Nguyên và A Đớt.
+- [ ] K1 `averages::flow_between` (lưu lượng về trong khoảng bất kỳ) — 4 test
+- [ ] K2 `rain::rain_between`, `rain::heavy_alert` — 9 test
+- [ ] K3 `report.rs`: kỳ ngày/tháng/năm, dòng báo cáo, tổng, `parse_range` — 11 test
+- [ ] K4 `storage::xlsx_report` ghi .xlsx (+ dependency) — 5 test
+- [ ] K5 Tab Báo cáo (phím 6), xuất Excel 3 sheet — 5 test + kiểm tay
+- [ ] K6 Chip cảnh báo mưa Vrain trên thanh đầu — kiểm tay
+- [ ] K7 Nghiệm thu, tài liệu, đo kích thước file
+
 ## Đang làm
 Giai đoạn 1 xong về mặt mã, còn chờ ca thật. Giai đoạn 2: màn hình Tính toán chạy được và đã kiểm tay ca 160,0→161. Giai đoạn 3: mã xong, 58 test pass, chưa thử API thật.
 
