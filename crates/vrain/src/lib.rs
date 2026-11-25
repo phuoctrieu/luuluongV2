@@ -8,4 +8,4 @@ mod poller;
 pub use client::{Client, Credentials};
 pub use error::VrainError;
 pub use poller::{spawn, PollResult, Target};
-pub use parse::{parse_details, vn_date, Obs, ParseOutcome};
+pub use parse::{next_cursor, parse_details, vn_date, Obs, ParseOutcome};

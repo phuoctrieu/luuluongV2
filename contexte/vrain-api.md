@@ -25,3 +25,9 @@ Nguồn mô tả ban đầu: `vrain-rainfall-spec.md`. Dưới đây là phần 
 - Đối chiếu mưa thật với kênh 1 ECAPRO khi có mưa (Task 8 của kế hoạch).
 - Độ trễ từ lúc hết giờ tới lúc mốc giờ xuất hiện.
 - Điều khoản sử dụng của Vrain về lấy dữ liệu tự động (chủ dự án xác nhận được dùng chung tài khoản).
+
+## Đổi API (phát hiện 2026-11-25; từ ~2026-11-10 app báo "Không kết nối được Vrain")
+- `/api/kttv/private/v1/organizations/details` giờ trả **404** (trang HTML). Đường mới: `GET /d/kttv/private/v1/organizations/details?from&to&i=_1h` (tiền tố `/d`, lấy từ `te.lX` trong `main.*.js`). Đăng nhập (`/api/vrain/public/v1/login`) và cookie `sid` không đổi. `/d/vrain/...` trả rỗng với tổ chức này — dùng `kttv`.
+- Định dạng dạng **cột**, phân trang: `{interval,total,offset,ids:[54 id],stations:[…],sums,rows:[{t,ts:"YYYY-MM-DDTHH:mm:ss",v:[mm theo thứ tự ids]}],next}`. `ts` đã có năm, giờ VN. `next` khác null → gọi tiếp với `cursor=<next>`.
+- Dòng cuối có thể là mốc giữa giờ (vd. "10:50" = giờ đang chạy, chưa đủ) → parser bỏ mọi mốc không tròn giờ.
+- Bài học: khi báo "không kết nối" mà mạng ổn, thăm dò bằng curl với cookie thật và đọc `main.*.js` của web; app giờ ghi log mã HTTP/loại lỗi mạng (không bí mật).

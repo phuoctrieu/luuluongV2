@@ -1,17 +1,87 @@
-{"detailUUID":"x","groupID":null,"stats":[
- {"timePoint":"Tổng","stations":[
-  {"area":"A Lưới 5","depth":"0.2","id":"841697470576","name":"Hương Nguyên (A Lưới)","sid":"s1"},
-  {"area":"A Lưới 4","depth":"0.6","id":"84396786852","name":"A Đớt (A Lưới)","sid":"s2"},
-  {"area":"A Lưới 5","depth":"1.0","id":"84846302387","name":"Tà Lương (A Lưới)","sid":"s3"},
-  {"area":"Vinh Lộc","depth":"9.9","id":"84845529137","name":"Giang Hải (Phú Lộc)","sid":"s4"}]},
- {"timePoint":"09:00 05/11","stations":[
-  {"area":"A Lưới 5","depth":"0.0","id":"841697470576","name":"Hương Nguyên (A Lưới)","sid":"s1"},
-  {"area":"A Lưới 4","depth":"0.2","id":"84396786852","name":"A Đớt (A Lưới)","sid":"s2"},
-  {"area":"A Lưới 5","depth":"0.4","id":"84846302387","name":"Tà Lương (A Lưới)","sid":"s3"},
-  {"area":"Vinh Lộc","depth":"5.0","id":"84845529137","name":"Giang Hải (Phú Lộc)","sid":"s4"}]},
- {"timePoint":"10:00 05/11","stations":[
-  {"area":"A Lưới 5","depth":"0.2","id":"841697470576","name":"Hương Nguyên (A Lưới)","sid":"s1"},
-  {"area":"A Lưới 4","depth":"0.4","id":"84396786852","name":"A Đớt (A Lưới)","sid":"s2"},
-  {"area":"A Lưới 5","depth":"0.6","id":"84846302387","name":"Tà Lương (A Lưới)","sid":"s3"},
-  {"area":"Vinh Lộc","depth":"4.9","id":"84845529137","name":"Giang Hải (Phú Lộc)","sid":"s4"}]}
-]}
+{
+ "interval": "_1h",
+ "total": 3,
+ "offset": 0,
+ "ids": [
+  "841697470576",
+  "84396786852",
+  "84846302387",
+  "84845529137"
+ ],
+ "stations": [
+  {
+   "id": "841697470576",
+   "sid": "f3ba4f16-6b5f-11f0-b887-0692ec44dcd5",
+   "name": "Hương Nguyên (A Lưới)",
+   "area": "A Lưới 5",
+   "address": null,
+   "cityName": "Thành phố Huế",
+   "project": null,
+   "waterStationType": null
+  },
+  {
+   "id": "84396786852",
+   "sid": "f3fcaf05-6b5f-11f0-b887-0692ec44dcd5",
+   "name": "A Đớt (A Lưới)",
+   "area": "A Lưới 4",
+   "address": null,
+   "cityName": "Thành phố Huế",
+   "project": null,
+   "waterStationType": null
+  },
+  {
+   "id": "84846302387",
+   "sid": "f2b089d0-6b5f-11f0-b887-0692ec44dcd5",
+   "name": "Tà Lương (A Lưới)",
+   "area": "A Lưới 5",
+   "address": null,
+   "cityName": "Thành phố Huế",
+   "project": null,
+   "waterStationType": null
+  },
+  {
+   "id": "84845529137",
+   "sid": "f43f3866-6b5f-11f0-b887-0692ec44dcd5",
+   "name": "Giang Hải (Phú Lộc)",
+   "area": "Vinh Lộc",
+   "address": null,
+   "cityName": "Thành phố Huế",
+   "project": null,
+   "waterStationType": null
+  }
+ ],
+ "sums": null,
+ "rows": [
+  {
+   "t": "09:00 25/11",
+   "ts": "2026-11-25T09:00:00",
+   "v": [
+    1.2,
+    4.2,
+    0.6,
+    5.4
+   ]
+  },
+  {
+   "t": "10:00 25/11",
+   "ts": "2026-11-25T10:00:00",
+   "v": [
+    1,
+    3.4,
+    0.4,
+    3.2
+   ]
+  },
+  {
+   "t": "10:50 25/11",
+   "ts": "2026-11-25T10:50:00",
+   "v": [
+    1,
+    3,
+    0.2,
+    4.8
+   ]
+  }
+ ],
+ "next": null
+}

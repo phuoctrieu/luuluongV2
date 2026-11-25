@@ -3,12 +3,14 @@
 use std::fmt;
 use std::time::Duration;
 
-use crate::{parse_details, ParseOutcome, VrainError};
+use crate::{next_cursor, parse_details, Obs, ParseOutcome, VrainError};
 
 const USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
 const TIMEOUT: Duration = Duration::from_secs(15);
 const ATTEMPTS: u32 = 3;
+/// Số trang tối đa cho một lần lấy (2 ngày × 54 trạm chỉ cần 1 trang; chặn vòng lặp vô hạn).
+const MAX_PAGES: usize = 20;
 
 #[derive(Clone, PartialEq)]
 pub struct Credentials {
@@ -64,11 +66,27 @@ impl Client {
         from: &str,
         to: &str,
         ids: &[String],
-        now: i64,
     ) -> Result<ParseOutcome, VrainError> {
+        let mut all = ParseOutcome { obs: Vec::<Obs>::new(), missing: ids.to_vec() };
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let page = self.fetch_page(c, from, to, cursor.as_deref())?;
+            let part = parse_details(&page, ids)?;
+            all.obs.extend(part.obs);
+            all.missing.retain(|m| part.missing.contains(m));
+            cursor = next_cursor(&page);
+            if cursor.is_none() {
+                break;
+            }
+        }
+        Ok(all)
+    }
+
+    /// Một trang, thử lại khi lỗi mạng/5xx.
+    fn fetch_page(&mut self, c: &Credentials, from: &str, to: &str, cursor: Option<&str>) -> Result<String, VrainError> {
         for attempt in 0..ATTEMPTS {
-            match self.attempt(c, from, to) {
-                Ok(body) => return parse_details(&body, ids, now),
+            match self.attempt(c, from, to, cursor) {
+                Ok(body) => return Ok(body),
                 Err(Step::Fail(e)) => return Err(e),
                 Err(Step::Unauthorized) => return Err(VrainError::Credentials),
                 Err(Step::Transient) => {
@@ -81,15 +99,15 @@ impl Client {
         Err(VrainError::Unreachable)
     }
 
-    fn attempt(&mut self, c: &Credentials, from: &str, to: &str) -> Result<String, Step> {
+    fn attempt(&mut self, c: &Credentials, from: &str, to: &str, cursor: Option<&str>) -> Result<String, Step> {
         if self.sid.is_none() {
             self.login(c)?;
         }
-        match self.details(from, to) {
+        match self.details(from, to, cursor) {
             Err(Step::Unauthorized) => {
                 self.sid = None;
                 self.login(c)?;
-                self.details(from, to)
+                self.details(from, to, cursor)
             }
             other => other,
         }
@@ -122,14 +140,18 @@ impl Client {
         }
     }
 
-    fn details(&self, from: &str, to: &str) -> Result<String, Step> {
+    fn details(&self, from: &str, to: &str, cursor: Option<&str>) -> Result<String, Step> {
         let sid = self.sid.as_deref().unwrap_or_default();
-        let resp = self
+        let mut req = self
             .agent
-            .get(&format!("{}/api/kttv/private/v1/organizations/details", self.base))
+            .get(&format!("{}/d/kttv/private/v1/organizations/details", self.base))
             .query("from", from)
             .query("to", to)
-            .query("i", "_1h")
+            .query("i", "_1h");
+        if let Some(cur) = cursor {
+            req = req.query("cursor", cur);
+        }
+        let resp = req
             .set("Cookie", &format!("sid={sid}"))
             .set("x-org-uuid", &self.org_uuid)
             .set("x-vrain-user-agent", USER_AGENT)
@@ -145,6 +167,11 @@ impl Client {
 }
 
 fn classify(e: ureq::Error, is_login: bool) -> Step {
+    // Chi tiết kỹ thuật chỉ ghi log (không gồm URL có tham số, header hay cookie).
+    match &e {
+        ureq::Error::Status(code, _) => eprintln!("Vrain: HTTP {code} ({})", if is_login { "đăng nhập" } else { "lấy mưa" }),
+        ureq::Error::Transport(t) => eprintln!("Vrain: lỗi mạng ({:?})", t.kind()),
+    }
     match e {
         ureq::Error::Status(401 | 403, _) if !is_login => Step::Unauthorized,
         ureq::Error::Status(400 | 401 | 403, _) => Step::Fail(VrainError::Credentials),
@@ -157,12 +184,11 @@ fn classify(e: ureq::Error, is_login: bool) -> Step {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
     use mockito::{Matcher, Server};
 
     const FIXTURE: &str = include_str!("../tests/data/vrain_details.json");
     const LOGIN: &str = "/api/vrain/public/v1/login";
-    const DETAILS: &str = "/api/kttv/private/v1/organizations/details";
+    const DETAILS: &str = "/d/kttv/private/v1/organizations/details";
     const ORG: &str = "org-1";
 
     fn creds() -> Credentials {
@@ -173,16 +199,12 @@ mod tests {
         vec!["841697470576".into(), "84396786852".into(), "84846302387".into()]
     }
 
-    fn now() -> i64 {
-        NaiveDate::from_ymd_opt(2026, 11, 5).unwrap().and_hms_opt(10, 5, 0).unwrap().and_utc().timestamp() - 7 * 3600
-    }
-
     fn client(server: &Server) -> Client {
         Client::new(&server.url(), ORG).retry_delay(Duration::from_millis(1))
     }
 
     fn fetch(c: &mut Client) -> Result<ParseOutcome, VrainError> {
-        c.fetch_hourly(&creds(), "2026-11-05", "2026-11-05", &ids(), now())
+        c.fetch_hourly(&creds(), "2026-11-25", "2026-11-25", &ids())
     }
 
     #[test]
@@ -200,8 +222,8 @@ mod tests {
         let details = s
             .mock("GET", DETAILS)
             .match_query(Matcher::AllOf(vec![
-                Matcher::UrlEncoded("from".into(), "2026-11-05".into()),
-                Matcher::UrlEncoded("to".into(), "2026-11-05".into()),
+                Matcher::UrlEncoded("from".into(), "2026-11-25".into()),
+                Matcher::UrlEncoded("to".into(), "2026-11-25".into()),
                 Matcher::UrlEncoded("i".into(), "_1h".into()),
             ]))
             .match_header("cookie", "sid=abc")
@@ -214,6 +236,25 @@ mod tests {
         assert_eq!(out.obs.len(), 6);
         login.assert();
         details.assert();
+    }
+
+    #[test]
+    fn follows_next_cursor() {
+        let mut s = Server::new();
+        let _login = s.mock("POST", LOGIN).with_status(200).with_header("set-cookie", "sid=abc; Path=/").create();
+        let page2 = s
+            .mock("GET", DETAILS)
+            .match_query(Matcher::UrlEncoded("cursor".into(), "c2".into()))
+            .with_status(200)
+            .with_body(FIXTURE)
+            .expect(1)
+            .create();
+        let page1 = FIXTURE.replace(r#""next": null"#, r#""next": "c2""#);
+        let first = s.mock("GET", DETAILS).match_query(Matcher::Regex("^[^c]*$".into())).with_status(200).with_body(page1).expect(1).create();
+        let out = fetch(&mut client(&s)).unwrap();
+        assert_eq!(out.obs.len(), 12);
+        first.assert();
+        page2.assert();
     }
 
     #[test]

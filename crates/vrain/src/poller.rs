@@ -42,7 +42,7 @@ pub fn spawn(
             let to = vn_date(now);
             let from = if backfilled { to.clone() } else { vn_date(now - i64::from(t.backfill_days) * 86_400) };
             let result = match client.as_mut() {
-                Some((_, c)) => c.fetch_hourly(&t.creds, &from, &to, &t.ids, now),
+                Some((_, c)) => c.fetch_hourly(&t.creds, &from, &to, &t.ids),
                 None => Err(VrainError::Unreachable),
             };
             backfilled |= result.is_ok();
@@ -74,7 +74,7 @@ mod tests {
 
     const FIXTURE: &str = include_str!("../tests/data/vrain_details.json");
     const LOGIN: &str = "/api/vrain/public/v1/login";
-    const DETAILS: &str = "/api/kttv/private/v1/organizations/details";
+    const DETAILS: &str = "/d/kttv/private/v1/organizations/details";
 
     fn unix_now() -> i64 {
         SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
